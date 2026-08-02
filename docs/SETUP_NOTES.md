@@ -1,14 +1,6 @@
 # Setup notes and gotchas
 
-Living record of environment setup + implementation gotchas, kept so we can reproduce this
-on the **Linux CPU box** and the **GPU cluster** without re-deriving everything. Append as we
-go. Machine status legend: ✅ done · ⬜ todo.
-
-| Machine | Python venv | mkdssp | Embedding weights | Status |
-|---|---|---|---|---|
-| **macOS (Apple Silicon)** | `.venv` (3.11) | brew 4.6.1 | on-demand HF cache | ✅ M1–M8 verified (58 pass / 6 gated; 64 with `RUN_HEAVY_EMB=1`) |
-| **Linux CPU box** | ✅ `.venv` (**3.12.3**) | ✅ bioconda `mkdssp` 4.6.1 | on-demand HF cache | ✅ **68/68 pass** w/ `RUN_HEAVY_EMB=1` + `FOLDENV_FORCE_CPU=1` (2026-07-08) |
-| **GPU cluster (LIP6)** | ⬜ | ⬜ | ⬜ pre-download on login node | ⬜ |
+Environment setup and the implementation gotchas worth knowing before running the suite.
 
 ---
 
@@ -21,23 +13,18 @@ go. Machine status legend: ✅ done · ⬜ todo.
   - **Linux CPU box (2026-07-08):** system `python3` is **3.12.3** (no 3.11 present); 3.12 has
     torch/transformers wheels, so `.venv` was built on 3.12.3 with the same pinned
     versions (torch 2.12.1, transformers 4.44.2, biopython 1.87) — all 42 pure tests pass.
-  - **setup.py gotcha:** `parse_requirements` in `setup.py` leaves inline `#` comments in the
-    requirement strings (the comment-strip is commented out), so `pip install -e .` chokes on
-    the `mini3di`/`pyyaml`/`biopython` lines. On Linux we installed as
-    `pip install -r requirements.txt pytest` (pip strips inline comments) **then**
-    `pip install -e . --no-deps`. The Mac's direct `pip install -e . pytest` worked because its
-    pip resolved the requirement lines differently; the two-step form is the portable route.
+
 - **Dedicated venv per machine**, not shared with the plot/train envs:
   ```
   python3.11 -m venv .venv
   .venv/bin/pip install -U pip
-  .venv/bin/pip install -e . pytest      # -e . pulls requirements.txt
+  .venv/bin/pip install -e ".[dev,saprot]"
   ```
 - `.venv/` is gitignored (added to `.gitignore`).
 
 ## 2. Dependencies (versions that work here)
 
-Added to `requirements.txt` for this deliverable: **`pyyaml`**, **`biopython`** (mini3di was
+Runtime dependencies beyond MuLAN's: **`pyyaml`**, **`biopython`** (mini3di was
 already there). Verified-good versions in `.venv`:
 
 | pkg | version | note |
@@ -92,9 +79,9 @@ also detects the version (`_detect_version`) for the direct `dssp_dict_from_pdb_
 
 ## 5. ⚠️ ESM C needs a *different* transformers than the rest
 
-**ESM C 6B requires `transformers >= 4.57`, but this deliverable's `requirements.txt` pins
+**ESM C 6B requires `transformers >= 4.57`, but this package's `pyproject.toml` pins
 `transformers < 4.45`** (repo-wide constraint for the other PLMs). These **cannot coexist** in
-one env. The repo already keeps a separate **`.venv-esmc`** (currently `transformers 5.12.1`)
+one env. Keep a separate **`.venv-esmc`** (currently `transformers 5.12.1`)
 for ESM C work. So:
 - Everything except ESM C (Ankh, Ankh3×2, ProstT5, SaProt×2, ESM2×2) → run in `.venv`.
 - **ESM C 6B → run in a `transformers>=4.57` env (e.g. `.venv-esmc`) on Linux/cluster**, not in
@@ -164,6 +151,3 @@ PATH="$CONDA_PREFIX/envs/dssp/bin:$PATH" \
 Live AlphaFold-fetch and mkdssp tests **self-skip** when offline / when `mkdssp` is absent, so a
 green run on a fresh box confirms the pure logic; a fully-online box with mkdssp exercises M1+M2
 end-to-end. Heavy embedding forward-pass test is opt-in: `RUN_HEAVY_EMB=1`.
-```
-git branch: phase2   (stacked on mps-support)
-```

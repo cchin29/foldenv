@@ -1,4 +1,4 @@
-"""L2 read-through *wiring* tests for context.py (PLAN_0709 §4).
+"""L2 read-through *wiring* tests for context.py (L2 persistence).
 
 test_persist.py round-trips persist.py in isolation; this file verifies that
 `context.get_dssp` and `context._protein_embedding` actually consult the disk cache

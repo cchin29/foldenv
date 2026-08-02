@@ -1,4 +1,4 @@
-"""M7 — Tier-2 biological analysis: do RSA + contacts separate functional from structural?
+"""Biological analysis: do RSA + contacts separate functional from structural?
 
 For a protein and a set of known functional residues, report each site's burial (RSA) and
 packing (contact_count) together with its **percentile rank** within the protein, plus a

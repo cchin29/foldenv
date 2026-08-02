@@ -4,7 +4,7 @@
 pass in in-memory dicts (L1). Those vanish with the process, so a multi-protein ×
 multi-config sweep (the P1/P2 eval expansion) re-pays the two costly steps — **mkdssp** and
 the **per-protein PLM forward pass** — every fresh run. This module adds a read-through
-**disk** cache (L2) under the existing `.struct_context_cache/`, so those two are computed
+**disk** cache (L2) under `.foldenv_cache/`, so those two are computed
 once per (protein, relevant-config) and reused across processes.
 
 Only DSSP and embeddings are persisted. The raw AlphaFold/RCSB mmCIF already persists
@@ -32,7 +32,7 @@ Keying (what changes the artifact → what the on-disk path/version must include
 A ``_FORMAT`` tag is embedded in each filename so a schema change invalidates cleanly (old
 files are simply never looked up). Corrupt/unreadable files are treated as a miss, never an
 error. Persistence is on by default; disable per call via
-``config.load(overrides={"cache": {"persist": False}})`` (the ``--no-cache`` escape for
+``config.load(overrides={"cache": {"persist": False}})`` (the opt-out for
 correctness runs).
 """
 from __future__ import annotations

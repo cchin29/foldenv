@@ -1,4 +1,4 @@
-"""M1 — fetch an AlphaFold-DB model for a UniProt accession and parse it with Biopython.
+"""Fetch an AlphaFold-DB model for a UniProt accession and parse it with Biopython.
 
 Flow: `/api/prediction/{accession}` → pick the model file(s) → download the mmCIF once,
 cache on disk by accession → parse to a Biopython `Structure`. The API is queried (rather

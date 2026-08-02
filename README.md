@@ -25,16 +25,21 @@ per-residue embedding · structural bioinformatics · mutation effect featurizat
 ## Install
 
 ```bash
-pip install foldenv                # core: structure fetch/parse, RSA, SS, contacts, embeddings
-pip install "foldenv[saprot]"      # + mini3di, for SaProt's structure-aware 3Di embeddings
+pip install "git+https://github.com/cchin29/foldenv@v0.1.0"
+pip install "foldenv[saprot] @ git+https://github.com/cchin29/foldenv@v0.1.0"   # + mini3di, for SaProt's 3Di embeddings
 ```
+
+Not on PyPI yet, so `pip install foldenv` resolves to nothing; install from the git tag and pin
+it. `esmc_600m` additionally needs the EvolutionaryScale SDK (`pip install esm`), which conflicts
+with the pinned `transformers` and so belongs in its own environment.
 
 **External binary:** secondary structure + RSA need the **`mkdssp`** binary (DSSP v4).
 - macOS: `brew tap brewsci/bio && brew install brewsci/bio/dssp`
 - Debian/Ubuntu: `apt-get install dssp` (provides `mkdssp`)
 
-Everything except DSSP runs without it; `mkdssp`-dependent fields raise a clear error if it's
-missing. PLM weights download on first use (Ankh-large ~2 GB).
+Without it, the low-level contact and sequence helpers still work, but every documented entry
+point — `get_structural_context`, `structural_profile`, `tool.invoke`, `analysis.summarize`,
+`validation.crystal_crosscheck` — needs secondary structure and so fails. PLM weights download on first use (Ankh-large ~2 GB).
 
 ## Usage
 

@@ -11,13 +11,15 @@ Two small helper modules adapt routines from MuLAN
 (https://github.com/GianLMB/mulan, © Gianluca Lombardi and Alessandra Carbone,
 licensed CC BY-NC-SA 4.0):
 
-  * foldenv/constants.py — amino-acid lookup tables and the PLM-encoder → HuggingFace-id
-    registry. (The amino-acid tables are standard reference data; the registry is a
-    mapping of model names to public model identifiers.)
+  * foldenv/constants.py — amino-acid lookup tables, and seven of the thirteen entries in
+    the PLM-encoder → HuggingFace-id registry. (The amino-acid tables are standard reference
+    data; the registry is a mapping of model names to public model identifiers, and the six
+    entries beyond MuLAN's — ProstT5, ESM C 6B, Ankh3 large and xl, SaProt and SaProt 1.3B —
+    were added here.)
 
-  * foldenv/plm.py — `get_device`, `load_pretrained_plm`, and `embed_sequence`
+  * foldenv/plm.py — `get_available_plms`, `load_pretrained_plm`, and `embed_sequence`
     (per-residue forward pass with per-model prefix/slicing handling), adapted from
-    `mulan.utils`.
+    `mulan.utils`. `get_device` is not from MuLAN; it originates in this line of work.
 
 License
 -------

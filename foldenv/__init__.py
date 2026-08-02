@@ -7,6 +7,8 @@ residues.
 
 Decisions and their rationale live in `decisions.yaml`.
 """
+
+__version__ = "0.1.0"
 import os as _os
 import sys as _sys
 
@@ -30,6 +32,7 @@ from .context import (
 from .fetch import NoAlphaFoldModelError, StructureRecord, fetch_structure
 
 __all__ = [
+    "__version__",
     "config",
     "validation",
     "analysis",

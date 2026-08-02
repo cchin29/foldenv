@@ -1,4 +1,4 @@
-"""M2 — DSSP → secondary structure (H/E/C) + RSA.
+"""DSSP → secondary structure (H/E/C) + RSA.
 
 Runs mkdssp (via Biopython's `dssp_dict_from_pdb_file`, which auto-detects the version and
 passes `--output-format=dssp` for v4 — the D6 mmCIF gotcha), then:

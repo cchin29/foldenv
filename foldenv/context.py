@@ -1,4 +1,4 @@
-"""M5 — the public `get_structural_context` API + per-protein in-memory cache.
+"""The public `get_structural_context` API + per-protein in-memory cache.
 
 `get_structural_context(uniprot_id, position)` assembles the residue's structural
 neighborhood from the M1–M4 stages: fetch/parse (M1) → RSA + secondary structure (M2) →

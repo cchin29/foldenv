@@ -1,4 +1,4 @@
-"""M6 — Tier-1 crystal cross-check: AF-predicted vs experimental RSA + secondary structure.
+"""Crystal cross-check: AF-predicted vs experimental RSA + secondary structure.
 
 Quantifies how much AlphaFold's per-residue RSA/SS agree with an experimental structure of
 the same protein — a sanity bound on the AF-derived structural fields (esp. AF's distortion

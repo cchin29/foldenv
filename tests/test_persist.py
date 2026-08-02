@@ -1,4 +1,4 @@
-"""L2 disk-persistence tests (PLAN_0709 §4) — no network, no mkdssp, no PLM weights.
+"""L2 disk-persistence tests (L2 persistence) — no network, no mkdssp, no PLM weights.
 
 We construct DSSP records and a small embedding tensor by hand and round-trip them through
 `persist`, so these run fast in any `.venv-structctx`. `torch` is already a repo dep.

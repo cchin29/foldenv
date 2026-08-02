@@ -5,7 +5,7 @@ position) -> dict` and its supporting modules, from AlphaFold fetch through the 
 
 ## Overview
 
-**82 tests** across 12 files (`test_config`, `test_config_nondefaults`, `test_fetch`,
+**83 tests** across 12 files (`test_config`, `test_config_nondefaults`, `test_fetch`,
 `test_dssp`, `test_contacts`, `test_embedding`, `test_context`, `test_validation`,
 `test_analysis`, `test_tool`, `test_persist`, `test_context_persist_wiring`; plus an empty
 `__init__.py`). Each test falls into one of three **categories**, which decide whether it
@@ -34,7 +34,7 @@ actually runs on a given machine:
 **Current counts** (this machine, network + `mkdssp` present, no `RUN_HEAVY_EMB`):
 `76 passed, 6 skipped`. The 6 skips are exactly the heavy tests (4 in `test_embedding`, 1 in
 `test_context`, 1 in `test_tool`). With **`RUN_HEAVY_EMB=1`** and network + `mkdssp` available,
-all **82** run. Offline / without `mkdssp`, the live tests self-skip instead. (The 14
+all **83** run. Offline / without `mkdssp`, the live tests self-skip instead. (The 14
 persistence tests — `test_persist` + `test_context_persist_wiring` — are all pure/offline, so
 they always run.)
 
@@ -47,7 +47,7 @@ they always run.)
 | `test_fetch.py` | M1 — AlphaFold-DB fetch/parse + isoform selector | 7 | pure (4), live (3) |
 | `test_dssp.py` | M2 — SS8→SS3 map, MaxASA/RSA tables, mkdssp run | 6 | pure (5), live (1) |
 | `test_contacts.py` | M3 — Cα/Cβ KD-tree contacts, pLDDT mask | 11 | pure (9), live (2) |
-| `test_embedding.py` | M4 — PLM registry, SA-string, 3Di, device routing, forward passes | 14 | pure (10), heavy (4) |
+| `test_embedding.py` | PLM registry, SA-string, 3Di, device routing, forward passes | 15 | pure (11), heavy (4) |
 | `test_context.py` | M5 — assembler / public API dict | 7 | live (6), heavy+live (1) |
 | `test_validation.py` | M6 — crystal cross-check (AF vs experimental) | 2 | live (2) |
 | `test_analysis.py` | M7 — Tier-2 functional-site analysis | 6 | live (6) |
@@ -59,7 +59,7 @@ they always run.)
 
 ### `test_config.py` (5, pure)
 - `test_defaults_load` — `config.load()` yields the locked D1–D6 defaults (Cα primary, 8.0/5.0 Å cutoffs, pLDDT mask 50, Tien-2013 table, `ankh`, device `auto`, dssp output-format).
-- `test_cache_dir_resolved` — YAML `null` cache dir resolves to a concrete path ending in `.struct_context_cache`.
+- `test_cache_dir_resolved` — YAML `null` cache dir resolves to a concrete path ending in `.foldenv_cache`.
 - `test_overrides_deep_merge` — an override deep-merges: overridden key changes, sibling and untouched sections survive.
 - `test_overrides_do_not_mutate_file_defaults` — overrides don't mutate the shared file defaults (a fresh `load()` still reads `ca`).
 - `test_decisions_path_exists` — `config.decisions_path()` points at a real file.
@@ -175,7 +175,7 @@ raise, so a disk hit is proven by their never being reached. No network / mkdssp
 
 ## How to run
 
-Use a Python 3.11 virtualenv (`pip install -e ".[dev]"`).
+Use a Python 3.11 virtualenv (`pip install -e ".[dev,saprot]"`).
 
 ```bash
 # default suite — pure tests always run; live tests self-skip if AF-DB/RCSB/mkdssp missing

@@ -1,13 +1,13 @@
-"""M4 — per-residue PLM embedding, multi-model.
+"""Per-residue PLM embedding, multi-model.
 
 Default is **Ankh-large** (1536-d): similar size to ProstT5 but the stronger ΔΔG
-representation on S1102 (RESULTS.md §10–14). Also available: **ProstT5** AA-mode (the
+representation on the SKEMPI S1102 benchmark in the work this was extracted from. Also available: **ProstT5** AA-mode (the
 original spec, 1024-d), **SaProt** (structure-aware AA+3Di, 1280-d — its 3Di half is
 computed from the AlphaFold backbone with mini3di), and **ESM C 6B** (2560-d).
 
 Ankh / ProstT5 / ESM C reuse the shared `foldenv.plm` helpers (loader + `embed_sequence`, which already
 handles each model's prefixes and per-residue slicing). SaProt needs a structure-aware
-input, so it has a dedicated path here that mirrors `experiments/gen_saprot_emb.py`.
+input, so it has a dedicated path here.
 
 One forward pass per protein; the caller (M5) slices at `position` and caches per protein.
 """
@@ -51,7 +51,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
     "esmc_6b": EmbeddingModelSpec("esmc_6b", 2560, False, mps_ok=False),  # ESM C 6B (CPU/GPU only)
 }
 
-# SaProt structure-aware vocab tokens (see experiments/gen_saprot_emb.py for the rationale).
+# SaProt structure-aware vocab tokens: each residue is one AA char plus one 3Di char.
 _AA_MASK = "#"               # SaProt AA-half mask for non-canonical residues
 _CANONICAL = set("ACDEFGHIKLMNPQRSTVWY")
 _GAP_3DI = "d"               # valid Foldseek/mini3di state for un-encodable residues
@@ -157,7 +157,7 @@ def sa_sequence(aa: str, tdi: str) -> str:
     """Interleave AA(upper)+3Di(lower) into SaProt's 2-char-per-residue SA string.
 
     Non-canonical AAs map to the '#' AA-mask (they have no valid SA token); this keeps the
-    tokenization per-residue aligned. Mirrors `experiments/gen_saprot_emb.py::sa_seq`.
+    tokenization per-residue aligned.
     """
     return "".join(
         (a.upper() if a.upper() in _CANONICAL else _AA_MASK) + d.lower()

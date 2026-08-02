@@ -28,16 +28,16 @@ rsa:
 # D4 — caching. AF files cached on disk by accession; parsed structure + DSSP + the one
 # PLM pass held in memory per protein so many positions of the same protein are cheap.
 cache:
-  dir: null              # null → <repo>/.struct_context_cache (gitignored)
+  dir: null              # null → <cwd>/.foldenv_cache (gitignored)
   in_memory: true        # L1: per-protein derived objects held in-process
-  # L2 (PLAN_0709 §4): also persist the two expensive derived artifacts — DSSP and the
+  # L2: also persist the two expensive derived artifacts — DSSP and the
   # per-protein PLM embedding — to disk under `dir`, so a multi-protein × multi-config sweep
-  # doesn't re-run mkdssp / the forward pass every fresh process. Set false (the `--no-cache`
+  # doesn't re-run mkdssp / the forward pass every fresh process. Set false (the opt-out
   # escape) for correctness runs that must recompute from scratch.
   persist: true
 
 # D5 — embedding model. Default is Ankh-large: similar size to ProstT5 but the stronger
-# ΔΔG representation on S1102 (0.832 vs 0.805; RESULTS.md §10–14). The embedding is
+# ΔΔG representation on the SKEMPI S1102 benchmark (0.832 vs 0.805). The embedding is
 # auxiliary to the real signal (RSA + contacts). Per-model dims come from embedding.py's
 # registry (EMBEDDING_MODELS), not this file — set `model` and the dim follows.
 #   ankh        — Ankh-large, T5 encoder, 1536-d            (default)
@@ -48,6 +48,7 @@ cache:
 #   saprot_1.3b — SaProt 1.3B, structure-aware, 1280-d      (deeper, not wider)
 #   esm2_3b     — ESM2-3B, 2560-d                           (sweep baseline)
 #   esm2_650m   — ESM2-650M, 1280-d                         (lighter)
+#   esmc_600m
 #   esmc_6b     — ESM C 6B, 2560-d                          (best PLM; heavy, off-MPS)
 #   none        — skip the embedding
 embedding:

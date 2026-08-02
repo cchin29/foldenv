@@ -7,7 +7,7 @@ name = "foldenv"
 version = "0.1.0"
 description = "Per-residue structural context (microenvironment) from AlphaFold: relative solvent accessibility (RSA), secondary structure, contacts, pLDDT, and per-residue protein-language-model embeddings."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.13"
 license = { file = "LICENSE" }
 authors = [{ name = "Connor Chin", email = "cchin29@stanford.edu" }]
 keywords = [
@@ -53,6 +53,8 @@ dependencies = [
 # SaProt's structure-aware 3Di half is computed from the AlphaFold backbone via mini3di.
 saprot = ["mini3di"]
 dev = ["pytest"]
+# ESM C needs transformers>=4.57, which conflicts with the pin above -- install in its own env.
+esmc = ["esm"]
 
 [project.urls]
 Homepage = "https://github.com/cchin29/foldenv"

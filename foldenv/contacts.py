@@ -1,4 +1,4 @@
-"""M3 — contacts via KD-tree (Biopython NeighborSearch).
+"""Contacts via KD-tree (Biopython NeighborSearch).
 
 For a queried residue: count neighbors under the D1 cutoff (Cα–Cα ≤ 8 Å primary, or Cβ–Cβ ≤
 5 Å), excluding self, and return the top-N nearest as `nearest_contacts`. Partners whose
