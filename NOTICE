@@ -1,0 +1,29 @@
+foldenv — NOTICE
+================
+
+`foldenv` was developed inside the MuLAN codebase and extracted into a standalone project.
+Most of the code (structure fetch/parse, DSSP/RSA, contacts, context assembly, disk
+persistence, validation, analysis, and the tool wrapper) is original work by Connor Chin.
+
+Adapted from MuLAN
+------------------
+Two small helper modules adapt routines from MuLAN
+(https://github.com/GianLMB/mulan, © Gianluca Lombardi and Alessandra Carbone,
+licensed CC BY-NC-SA 4.0):
+
+  * foldenv/constants.py — amino-acid lookup tables and the PLM-encoder → HuggingFace-id
+    registry. (The amino-acid tables are standard reference data; the registry is a
+    mapping of model names to public model identifiers.)
+
+  * foldenv/plm.py — `get_device`, `load_pretrained_plm`, and `embed_sequence`
+    (per-residue forward pass with per-model prefix/slicing handling), adapted from
+    `mulan.utils`.
+
+License
+-------
+`foldenv` is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International (CC BY-NC-SA 4.0) — the same license as MuLAN — honoring the ShareAlike terms
+of the adapted routines above. See the LICENSE file for the full text.
+
+Copyright (c) 2026 Connor Chin, for the original work; portions adapted from MuLAN are
+Copyright (c) 2024 Gianluca Lombardi and Alessandra Carbone.

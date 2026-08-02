@@ -1,0 +1,70 @@
+# Locked decisions for `get_structural_context` (D1-D6).
+# These are the "reasonable defaults"; every value is overridable via config.load(overrides=...).
+# Record which values were used in any results writeup (several shift absolute numbers).
+
+# D1 — contact cutoff. Cα-8 Å is the primary burial/packing measure; Cβ-5 Å is reported
+# alongside in validation. `primary` selects which drives `contact_count`/`nearest_contacts`.
+contacts:
+  primary: ca            # "ca" (Cα–Cα ≤ ca_cutoff) or "cb" (Cβ–Cβ ≤ cb_cutoff)
+  ca_cutoff: 8.0         # Å
+  cb_cutoff: 5.0         # Å
+  n_nearest: 5           # size of `nearest_contacts` list
+  glycine_cb_fallback: ca  # glycine has no Cβ → use Cα ("ca") for its contacts
+
+# D2 — pLDDT masking. Residues below the threshold are excluded as contact *partners*
+# (AF disordered loops produce spurious contacts); the queried residue's own pLDDT is
+# always returned regardless.
+plddt:
+  mask_below: 50.0       # 0–100 scale (AF: <50 = very low / likely disordered)
+
+# D3 — RSA normalization. RSA = ASA / MaxASA(residue_type). Record the table used;
+# tables shift absolute RSA by ~0.05–0.1.
+#   tien2013_theoretical | tien2013_empirical | sander_rost1994
+rsa:
+  max_asa_table: tien2013_theoretical
+  buried_threshold: 0.20   # RSA ≲ 0.20 → buried (reporting convenience only)
+  exposed_threshold: 0.25  # RSA ≳ 0.25 → exposed
+
+# D4 — caching. AF files cached on disk by accession; parsed structure + DSSP + the one
+# PLM pass held in memory per protein so many positions of the same protein are cheap.
+cache:
+  dir: null              # null → <repo>/.struct_context_cache (gitignored)
+  in_memory: true        # L1: per-protein derived objects held in-process
+  # L2 (PLAN_0709 §4): also persist the two expensive derived artifacts — DSSP and the
+  # per-protein PLM embedding — to disk under `dir`, so a multi-protein × multi-config sweep
+  # doesn't re-run mkdssp / the forward pass every fresh process. Set false (the `--no-cache`
+  # escape) for correctness runs that must recompute from scratch.
+  persist: true
+
+# D5 — embedding model. Default is Ankh-large: similar size to ProstT5 but the stronger
+# ΔΔG representation on S1102 (0.832 vs 0.805; RESULTS.md §10–14). The embedding is
+# auxiliary to the real signal (RSA + contacts). Per-model dims come from embedding.py's
+# registry (EMBEDDING_MODELS), not this file — set `model` and the dim follows.
+#   ankh        — Ankh-large, T5 encoder, 1536-d            (default)
+#   ankh3_large — Ankh3-large, T5 encoder, 1536-d           ([NLU] prefix)
+#   ankh3_xl    — Ankh3-XL, T5 encoder, 2560-d              ([NLU] prefix)
+#   prostt5_aa  — ProstT5 AA-mode, 1024-d                   (original spec)
+#   saprot      — SaProt 650M, structure-aware AA+3Di, 1280-d (3Di via mini3di)
+#   saprot_1.3b — SaProt 1.3B, structure-aware, 1280-d      (deeper, not wider)
+#   esm2_3b     — ESM2-3B, 2560-d                           (sweep baseline)
+#   esm2_650m   — ESM2-650M, 1280-d                         (lighter)
+#   esmc_6b     — ESM C 6B, 2560-d                          (best PLM; heavy, off-MPS)
+#   none        — skip the embedding
+embedding:
+  model: ankh
+  device: auto           # auto | cpu | cuda | mps. ESM C 6B is never placed on MPS
+                         # (mps_ok=False in embedding.EMBEDDING_MODELS) — it reroutes to
+                         # CUDA/CPU for the Linux box or cluster GPUs.
+
+# D6 — DSSP version. mkdssp 4 defaults to mmCIF, which breaks Biopython's legacy-format
+# parser; force the legacy text format (or install mkdssp 3.x).
+dssp:
+  executable: mkdssp
+  # Documents the D6 resolution; not consumed directly — Biopython 1.87 detects mkdssp's
+  # version and injects `--output-format=dssp` for v4 itself (verified in its DSSP wrapper).
+  output_format: dssp
+
+# Structure source.
+alphafold:
+  api_base: https://alphafold.ebi.ac.uk/api/prediction
+  file_version: null     # null → use whatever the API returns (don't hardcode v4)

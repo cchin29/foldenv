@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+.venv/
+.venv-*/
+venv/
+env/
+
+# foldenv on-disk cache (AlphaFold mmCIFs, DSSP, per-protein embeddings)
+.foldenv_cache/
+.struct_context_cache/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

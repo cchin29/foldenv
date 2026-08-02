@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foldenv"
+version = "0.1.0"
+description = "Per-residue structural context (microenvironment) from AlphaFold: relative solvent accessibility (RSA), secondary structure, contacts, pLDDT, and per-residue protein-language-model embeddings."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Connor Chin", email = "cchin29@stanford.edu" }]
+keywords = [
+    "protein structure",
+    "AlphaFold",
+    "relative solvent accessibility",
+    "RSA",
+    "secondary structure",
+    "DSSP",
+    "residue contacts",
+    "contact map",
+    "pLDDT",
+    "residue microenvironment",
+    "protein language model",
+    "per-residue embedding",
+    "bioinformatics",
+    "structural bioinformatics",
+    "mutation effect",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "License :: Free for non-commercial use",
+]
+dependencies = [
+    "numpy",
+    "requests",
+    "pyyaml",
+    "biopython",
+    # PLM embedding (the default get_structural_context path). Sequence models are tested on
+    # transformers 4.27–4.45; ESM C needs >=4.57 in a separate environment (see README).
+    "torch>=2.0",
+    "transformers>=4.27,<4.46",
+]
+
+[project.optional-dependencies]
+# SaProt's structure-aware 3Di half is computed from the AlphaFold backbone via mini3di.
+saprot = ["mini3di"]
+dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/cchin29/foldenv"
+Repository = "https://github.com/cchin29/foldenv"
+
+[tool.setuptools]
+packages = ["foldenv"]
+
+[tool.setuptools.package-data]
+foldenv = ["decisions.yaml", "tool_spec.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

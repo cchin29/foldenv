@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install CPU-only torch
+        # Avoid pulling the large CUDA wheels in CI.
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install package (with dev + saprot extras)
+        run: pip install -e ".[dev,saprot]"
+
+      - name: Run tests
+        # Deterministic/offline: point the AlphaFold API base at an unreachable host so the
+        # network-gated tests self-skip instead of depending on live AlphaFold-DB. mkdssp is
+        # not installed, so DSSP-dependent tests self-skip; heavy embedding forward-pass
+        # tests are opt-in (RUN_HEAVY_EMB=1) and stay off here.
+        env:
+          FOLDENV_ALPHAFOLD_API_BASE: http://127.0.0.1:9
+        run: pytest -q

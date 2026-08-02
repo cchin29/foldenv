@@ -1,0 +1,122 @@
+{
+  "name": "get_structural_context",
+  "description": "Return the physical neighborhood of a residue in its AlphaFold-predicted 3D fold, to reason about whether the residue is structural (buried, tightly packed \u2014 holding the fold together) or functional (surface-exposed \u2014 doing a job). Given a UniProt accession and a 1-based residue position, returns relative solvent accessibility (rsa, 0=buried..1=exposed), secondary structure (H/E/C), packing (contact_count and nearest_contacts), and an AlphaFold per-residue confidence (plddt, 0-100). Use it to tell buried structural residues apart from functional surface residues; pair it with conservation, which the structural signal does not replace (buried active-site residues look structural on geometry alone).",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "uniprot_id": {
+        "type": "string",
+        "description": "UniProt accession (canonical), e.g. 'P62593'.",
+        "pattern": "^[A-Za-z0-9]+(-[0-9]+)?$"
+      },
+      "position": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "1-based residue position in the canonical UniProt sequence."
+      },
+      "include_embedding": {
+        "type": "boolean",
+        "default": false,
+        "description": "Include the raw per-residue PLM embedding vector (large; default false \u2014 it is for downstream ML, not agent reasoning)."
+      }
+    },
+    "required": [
+      "uniprot_id",
+      "position"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "uniprot_id": {
+        "type": "string"
+      },
+      "position": {
+        "type": "integer"
+      },
+      "wildtype_aa": {
+        "type": "string",
+        "description": "1-letter residue at the position."
+      },
+      "rsa": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Relative solvent accessibility; \u22720.2 buried, \u22730.25 exposed."
+      },
+      "secondary_structure": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "H",
+          "E",
+          "C",
+          null
+        ],
+        "description": "H=helix, E=strand, C=coil."
+      },
+      "contact_count": {
+        "type": "integer",
+        "description": "C\u03b1 neighbors \u22648 \u00c5 (packing/burial proxy)."
+      },
+      "nearest_contacts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "resnum": {
+              "type": "integer"
+            },
+            "aa": {
+              "type": "string"
+            },
+            "distance": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "embedding": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "number"
+        },
+        "description": "Per-residue PLM vector; null unless include_embedding=true."
+      },
+      "embedding_model": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "plddt": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "AlphaFold confidence 0-100."
+      }
+    },
+    "required": [
+      "uniprot_id",
+      "position",
+      "wildtype_aa",
+      "rsa",
+      "secondary_structure",
+      "contact_count",
+      "nearest_contacts",
+      "embedding",
+      "embedding_model",
+      "plddt"
+    ]
+  }
+}
