@@ -82,7 +82,7 @@ Config is overridable per call via `config.load(overrides=...)`; all outputs are
 | Field | Meaning |
 |---|---|
 | `rsa` | relative solvent accessibility (Tien 2013 theoretical MaxASA) |
-| `secondary_structure` | 3-state H/E/C from DSSP |
+| `secondary_structure` | 3-state H/E/C from DSSP; G,I→H and B→E (Cuff & Barton Method A, as in MDTraj/MDAnalysis — see `SS8_TO_SS3`). SS-*prediction* benchmarks often send G,I,B→C instead, which reports less H and E |
 | `contact_count` | number of residues in the Cα-8 Å neighborhood (pLDDT-masked) |
 | `nearest_contacts` | list of `{resnum, aa, distance}` for the closest contacts |
 | `embedding` / `embedding_model` | per-residue PLM vector + which model produced it (default Ankh-large, 1536-d) |
@@ -132,8 +132,8 @@ for environment setup and the RSA/secondary-structure validation notes.
 
 ## Provenance & license
 
-`foldenv` was developed inside the [MuLAN](https://github.com/GianLMB/mulan) codebase and
-extracted here. Two helper modules (`constants.py`, `plm.py`) adapt small routines from
+`foldenv` was developed inside a private research fork of
+[MuLAN](https://github.com/GianLMB/mulan) and extracted here. Two helper modules (`constants.py`, `plm.py`) adapt small routines from
 MuLAN — see [`NOTICE`](https://github.com/cchin29/foldenv/blob/main/NOTICE). Licensed under
 **CC BY-NC-SA 4.0** (see [`LICENSE`](https://github.com/cchin29/foldenv/blob/main/LICENSE)),
 the same license as MuLAN: free for attributed, non-commercial use; derivatives must share

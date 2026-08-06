@@ -36,9 +36,20 @@ cache:
   # escape) for correctness runs that must recompute from scratch.
   persist: true
 
-# D5 — embedding model. Default is Ankh-large: similar size to ProstT5 but the stronger
-# ΔΔG representation on the SKEMPI S1102 benchmark (0.832 vs 0.805). The embedding is
-# auxiliary to the real signal (RSA + contacts). Per-model dims come from embedding.py's
+# D5 — embedding model. Default is Ankh-large: similar size to ProstT5 and a stronger ΔΔG
+# representation *than ProstT5* on the SKEMPI S1102 benchmark — 0.832 vs 0.805 Pearson, 10-fold
+# CV, 50 epochs / patience 10, base arms. Stronger than ProstT5 only: on the same benchmark
+# ESM C 6B (0.859) and SaProt (0.842) both beat Ankh-large, and at a converged 300 ep / p30
+# budget the Ankh-vs-ProstT5 gap halves to 0.836 vs 0.823. The direction holds at every budget
+# measured (Ankh wins 10/10 folds), which is what the default rests on; the margin is
+# budget-dependent, which is why the budget is quoted with it.
+#
+# Provenance: these are measurements from the **private research fork this package was extracted
+# from** — this author's own unpublished numbers, not MuLAN's published figures and not
+# reproducible from this repository. MuLAN's published Ankh-large S1102 result is 0.868; 0.832 is
+# a local from-scratch reproduction that falls short of it, and ProstT5 has no published
+# counterpart on this benchmark at all. Recorded to say what the default was chosen on, not as a
+# claim this package supports. The embedding is auxiliary to the real signal (RSA + contacts). Per-model dims come from embedding.py's
 # registry (EMBEDDING_MODELS), not this file — set `model` and the dim follows.
 #   ankh        — Ankh-large, T5 encoder, 1536-d            (default)
 #   ankh3_large — Ankh3-large, T5 encoder, 1536-d           ([NLU] prefix)

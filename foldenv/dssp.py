@@ -18,6 +18,22 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
+# DSSP's 8-state code reduced to 3 states. **There is more than one convention for this and they
+# disagree**, so the choice is recorded here rather than left implicit. This is Cuff & Barton's
+# **Method A** (1999, Proteins 34:508-519): G (3-10) and I (π) → H, B (isolated β-bridge) → E.
+# MDTraj's `compute_dssp(simplified=True)` and MDAnalysis use the same mapping, so structural
+# analysis tooling generally agrees with this file.
+#
+# The alternative is their **Method B**, which sends G, I and B → C. It is the convention of the
+# secondary-structure-*prediction* literature (JPred/CASP-style Q3 scoring) rather than of
+# structure-analysis tools, and it can only report less H and E, never more, since Method B's
+# H- and E-sets are proper subsets of Method A's. The two genuinely disagree on real proteins:
+# ~1% of TP53's residues flip between them and ~5.6% of TEM-1's. So comparing this field against
+# a published secondary-structure figure is only meaningful once both reductions match.
+#
+# P (PPII / κ-helix) is DSSP v4 only — it arrived in mkdssp 4.0.0 and older versions never emit
+# it. The table covers every code v4 can assign; anything unrecognised falls through the `.get`
+# default at the call site and becomes C, so a future DSSP code would be silently called coil.
 SS8_TO_SS3 = {
     "H": "H", "G": "H", "I": "H",   # α / 3-10 / π helix
     "E": "E", "B": "E",             # β-strand / β-bridge

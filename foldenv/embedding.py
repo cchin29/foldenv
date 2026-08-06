@@ -1,9 +1,11 @@
 """Per-residue PLM embedding, multi-model.
 
-Default is **Ankh-large** (1536-d): similar size to ProstT5 but the stronger ΔΔG
-representation on the SKEMPI S1102 benchmark in the work this was extracted from. Also available: **ProstT5** AA-mode (the
-original spec, 1024-d), **SaProt** (structure-aware AA+3Di, 1280-d — its 3Di half is
-computed from the AlphaFold backbone with mini3di), and **ESM C 6B** (2560-d).
+Default is **Ankh-large** (1536-d): similar size to ProstT5 and a stronger ΔΔG representation
+than ProstT5 on the SKEMPI S1102 benchmark — but not the strongest available here, and the
+figures behind the choice are unpublished. See `decisions.yaml` D5 for both numbers, the
+training budget they were measured at, and where they come from. Also available: **ProstT5**
+AA-mode (the original spec, 1024-d), **SaProt** (structure-aware AA+3Di, 1280-d — its 3Di half
+is computed from the AlphaFold backbone with mini3di), and **ESM C 6B** (2560-d).
 
 Ankh / ProstT5 / ESM C reuse the shared `foldenv.plm` helpers (loader + `embed_sequence`, which already
 handles each model's prefixes and per-residue slicing). SaProt needs a structure-aware
