@@ -1,0 +1,321 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite this repository and the sources listed under
+  `references` — in particular the MaxASA table behind any RSA value you report.
+title: "foldenv: per-residue structural context from AlphaFold"
+abstract: >-
+  Computes a protein residue's structural microenvironment from its AlphaFold-predicted
+  fold: relative solvent accessibility (RSA), three-state secondary structure via DSSP,
+  spatial contacts and packing, a pLDDT confidence flag, and an optional per-residue
+  protein-language-model embedding. One call takes a UniProt accession and residue
+  position and returns a strict-JSON-safe record, enough to separate a buried structural
+  residue from a functional surface residue or to featurize a mutation site.
+type: software
+authors:
+  - family-names: Chin
+    given-names: Connor
+    email: cchin29@stanford.edu
+    affiliation: Stanford University
+version: "0.1.0"
+date-released: "2026-08-02"
+license: CC-BY-NC-SA-4.0
+license-url: "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+url: "https://github.com/cchin29/foldenv"
+repository-code: "https://github.com/cchin29/foldenv"
+# `version` and `date-released` track the git tag and `pyproject.toml` together. A CITATION.cff
+# naming a version the package does not is worse than one naming none, and a date ahead of the
+# tag claims an artifact nobody can fetch. Bump all three in the release commit.
+#
+# No `identifiers:` block yet -- there is no DOI for the software itself. If one is minted from
+# the v0.1.0 tag, add it here in the same pass.
+#
+# `issue`, not `number`, for a periodical issue: CFF 1.2 defines `number` as the accession
+# number of a work, which is not what a journal issue is. Long author lists are truncated to
+# the first three plus the senior author, and every truncated entry says so in its `notes`.
+keywords:
+  - protein structure
+  - AlphaFold
+  - relative solvent accessibility
+  - RSA
+  - secondary structure
+  - DSSP
+  - residue contacts
+  - contact map
+  - pLDDT
+  - residue microenvironment
+  - protein language model
+  - per-residue embedding
+  - bioinformatics
+  - structural bioinformatics
+  - mutation effect
+references:
+  # Attribution required by licence, not by convention: foldenv/constants.py and foldenv/plm.py
+  # adapt from MuLAN, which is CC BY-NC-SA 4.0. constants.py takes lookup tables and part of the
+  # PLM registry (data); plm.py adapts routines. See NOTICE for the exact list and its carve-outs.
+  - type: article
+    title: >-
+      MuLAN: Mutation-driven Light Attention Networks for investigating
+      protein-protein interactions from sequences
+    authors:
+      - family-names: Lombardi
+        given-names: Gianluca
+      - family-names: Carbone
+        given-names: Alessandra
+    year: 2024
+    doi: 10.1101/2024.08.24.609515
+    journal: bioRxiv
+    notes: >-
+      Upstream work that two helper modules here adapt from, and whose licence this package
+      inherits. Code: https://github.com/GianLMB/mulan
+
+  # The primary input. AlphaFold DB asks for the method paper and the database paper separately.
+  - type: article
+    title: "Highly accurate protein structure prediction with AlphaFold"
+    authors:
+      - family-names: Jumper
+        given-names: John
+      - family-names: Evans
+        given-names: Richard
+      - family-names: Pritzel
+        given-names: Alexander
+      - family-names: Hassabis
+        given-names: Demis
+    year: 2021
+    doi: 10.1038/s41586-021-03819-2
+    journal: Nature
+    volume: 596
+    start: 583
+    end: 589
+    notes: "First three authors plus the senior author; see the paper for the full list."
+  - type: article
+    title: >-
+      AlphaFold Protein Structure Database 2025: a redesigned interface and updated
+      structural coverage
+    authors:
+      - family-names: Bertoni
+        given-names: Damian
+      - family-names: Tsenkov
+        given-names: Maxim
+      - family-names: Magana
+        given-names: Paulyna
+      - family-names: Velankar
+        given-names: Sameer
+    year: 2025
+    doi: 10.1093/nar/gkaf1226
+    journal: Nucleic Acids Research
+    volume: 54
+    issue: D1
+    start: D358
+    end: D362
+    notes: >-
+      The database foldenv/fetch.py queries at https://alphafold.ebi.ac.uk/api/prediction, and
+      the paper AlphaFold DB currently asks users to cite. It supersedes the 2024 database
+      paper (10.1093/nar/gkad1011). First three authors plus the senior author.
+
+  # A second structural input: validation.crystal_crosscheck downloads experimental structures
+  # from RCSB to check the AlphaFold-derived RSA and secondary structure against a crystal.
+  - type: article
+    title: "The Protein Data Bank"
+    authors:
+      - family-names: Berman
+        given-names: Helen M.
+      - family-names: Westbrook
+        given-names: John
+      - family-names: Feng
+        given-names: Zukang
+      - family-names: Bourne
+        given-names: Philip E.
+    year: 2000
+    doi: 10.1093/nar/28.1.235
+    journal: Nucleic Acids Research
+    volume: 28
+    issue: 1
+    start: 235
+    end: 242
+    notes: "First three authors plus the senior author; see the paper for the full list."
+
+  # Secondary structure and the ABSOLUTE solvent accessibility that RSA is computed from.
+  - type: article
+    title: >-
+      Dictionary of protein secondary structure: pattern recognition of hydrogen-bonded
+      and geometrical features
+    authors:
+      - family-names: Kabsch
+        given-names: Wolfgang
+      - family-names: Sander
+        given-names: Christian
+    year: 1983
+    doi: 10.1002/bip.360221211
+    journal: Biopolymers
+    volume: 22
+    issue: 12
+    start: 2577
+    end: 2637
+  - type: article
+    title: "A series of PDB-related databanks for everyday needs"
+    authors:
+      - family-names: Touw
+        given-names: Wouter G.
+      - family-names: Baakman
+        given-names: Coos
+      - family-names: Black
+        given-names: Jon
+      - family-names: te Beek
+        given-names: Tim A. H.
+      - family-names: Krieger
+        given-names: Elmar
+      - family-names: Joosten
+        given-names: Robbie P.
+      - family-names: Vriend
+        given-names: Gert
+    year: 2015
+    doi: 10.1093/nar/gku1028
+    journal: Nucleic Acids Research
+    volume: 43
+    start: D364
+    end: D368
+    notes: "The DSSP v4 line that provides the `mkdssp` binary this package shells out to."
+
+  # The MaxASA reference tables. RSA = DSSP absolute ASA / MaxASA, so a reported RSA is a claim
+  # about a specific table: absolute values shift ~0.05-0.1 between them. `rsa.max_asa_table`
+  # selects one and records the choice; both shipped options are cited here.
+  - type: article
+    title: "Maximum Allowed Solvent Accessibilites of Residues in Proteins"
+    authors:
+      - family-names: Tien
+        given-names: Matthew Z.
+      - family-names: Meyer
+        given-names: Austin G.
+      - family-names: Sydykova
+        given-names: Dariya K.
+      - family-names: Spielman
+        given-names: Stephanie J.
+      - family-names: Wilke
+        given-names: Claus O.
+    year: 2013
+    doi: 10.1371/journal.pone.0080635
+    journal: PLoS ONE
+    volume: 8
+    issue: 11
+    start: e80635
+    notes: >-
+      Title verbatim from the published article, including the "Accessibilites" spelling --
+      do not correct it. Supplies the default `tien2013_theoretical` table and the
+      `tien2013_empirical` alternative.
+  - type: article
+    title: "Conservation and prediction of solvent accessibility in protein families"
+    authors:
+      - family-names: Rost
+        given-names: Burkhard
+      - family-names: Sander
+        given-names: Chris
+    year: 1994
+    doi: 10.1002/prot.340200303
+    journal: Proteins
+    volume: 20
+    issue: 3
+    start: 216
+    end: 226
+    notes: >-
+      Supplies the `sander_rost1994` MaxASA table. The config key inverts the published author
+      order, which is Rost & Sander; the key is kept as-is because renaming it would break
+      existing configs.
+
+  # The substitution matrix behind the crystal cross-check alignment. Every number in
+  # CrosscheckReport depends on the residue mapping this matrix produces.
+  - type: article
+    title: "Amino acid substitution matrices from protein blocks"
+    authors:
+      - family-names: Henikoff
+        given-names: Steven
+      - family-names: Henikoff
+        given-names: Jorja G.
+    year: 1992
+    doi: 10.1073/pnas.89.22.10915
+    journal: Proceedings of the National Academy of Sciences
+    volume: 89
+    issue: 22
+    start: 10915
+    end: 10919
+    notes: "BLOSUM62, loaded in validation.py to align the AlphaFold and crystal sequences."
+
+  # Parses the structures, drives mkdssp, supplies the KD-tree behind contact_count, and runs
+  # the crystal-crosscheck alignment.
+  - type: article
+    title: >-
+      Biopython: freely available Python tools for computational molecular biology
+      and bioinformatics
+    authors:
+      - family-names: Cock
+        given-names: Peter J. A.
+      - family-names: Antao
+        given-names: Tiago
+      - family-names: Chang
+        given-names: Jeffrey T.
+      - family-names: de Hoon
+        given-names: Michiel J. L.
+    year: 2009
+    doi: 10.1093/bioinformatics/btp163
+    journal: Bioinformatics
+    volume: 25
+    issue: 11
+    start: 1422
+    end: 1423
+    notes: >-
+      More than plumbing here: `dssp_dict_from_pdb_file` and the mmCIF/PDB parsers, the
+      `NeighborSearch` KD-tree behind `contact_count` and `nearest_contacts`, and the
+      `PairwiseAligner` behind the crystal cross-check. First three authors plus the senior
+      author; see the paper for the full list.
+
+  # The 3Di structural alphabet, computed from the AlphaFold backbone by mini3di. This is an
+  # algorithm from a paper producing half of every SaProt token, not a packaging detail --
+  # `mini3di` being an optional [saprot] extra does not change what it implements.
+  - type: article
+    title: "Fast and accurate protein structure search with Foldseek"
+    authors:
+      - family-names: van Kempen
+        given-names: Michel
+      - family-names: Kim
+        given-names: Stephanie S.
+      - family-names: Tumescheit
+        given-names: Charlotte
+      - family-names: Steinegger
+        given-names: Martin
+    year: 2024
+    doi: 10.1038/s41587-023-01773-0
+    journal: Nature Biotechnology
+    volume: 42
+    start: 243
+    end: 246
+    notes: >-
+      Source of the 3Di alphabet that mini3di implements. First three authors plus the senior
+      author; see the paper for the full list.
+
+  # The default embedding backbone. `get_structural_context` computes an embedding unless asked
+  # not to, and `embedding`/`embedding_model` are required keys in the output schema -- so Ankh
+  # is what a caller who makes no choice gets, which makes it a component rather than an option.
+  - type: article
+    title: "Ankh: Optimized Protein Language Model Unlocks General-Purpose Modelling"
+    authors:
+      - family-names: Elnaggar
+        given-names: Ahmed
+      - family-names: Essam
+        given-names: Hazem
+      - family-names: Salah-Eldin
+        given-names: Wafaa
+      - family-names: Rost
+        given-names: Burkhard
+    year: 2023
+    doi: 10.1101/2023.01.16.524265
+    journal: bioRxiv
+    notes: >-
+      Ankh-large, the default `embedding_model`. The published title carries an ankh glyph
+      after "Ankh", omitted here for tooling safety. First three authors plus the senior author.
+
+# The nine other selectable backbones -- Ankh3-large/xl, ProstT5, SaProt 650M/1.3B, ESM2-3B/650M,
+# ESM C 600M/6B -- are not cited here. Only the default is a component; the rest are chosen by
+# the caller, they collapse to a handful of model families, and listing them would bury the
+# sources above. `EMBEDDING_MODELS` in foldenv/embedding.py names each one, and
+# `PLM_ENCODERS` in foldenv/constants.py maps it to its HuggingFace Hub id, which is where the
+# upstream model and its paper are found. If a published result depends on one of them, cite
+# that model as well as this package.

@@ -25,8 +25,10 @@ SS8_TO_SS3 = {
 }
 
 # --- MaxASA reference tables (Å²), keyed by 1-letter AA -------------------------------
-# Tien et al. 2013, PLoS ONE 9(11):e80635, Table 1 (theoretical & empirical); Sander & Rost
-# 1994. Record which was used — absolute RSA shifts ~0.05–0.1 between tables.
+# Tien et al. 2013, PLoS ONE 8(11):e80635, Table 1 (theoretical & empirical); Rost & Sander
+# 1994, Proteins 20:216-226. Record which was used — absolute RSA shifts ~0.05–0.1 between
+# tables. (The `sander_rost1994` key inverts that paper's author order; kept as-is because
+# renaming it would break existing configs. Full citations in CITATION.cff.)
 
 _TIEN2013_THEORETICAL = {
     "A": 129.0, "R": 274.0, "N": 195.0, "D": 193.0, "C": 167.0, "E": 223.0, "Q": 225.0,

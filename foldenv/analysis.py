@@ -19,8 +19,25 @@ from . import config as _config
 from . import context as _ctx
 
 # Known functional residues in UniProt numbering (map literature/Ambler numbers first!).
-# TEM-1 β-lactamase (P62593): catalytic S70/K73/E166 in *Ambler* numbering → UniProt 68/71/164.
-# TP53 (P04637): DNA-contact / hotspot residues R175/R248/R273 are already UniProt numbering.
+# Example data for the descriptive helper below, not a curated benchmark — pass `sites=` for
+# anything else. The three TP53 entries are not one category, and the difference matters here.
+#
+# TEM-1 β-lactamase (P62593): the class A catalytic triad, S70/K73/E166 in *Ambler* numbering
+# (Ambler et al. 1991) → UniProt 68/71/164. Ambler numbering carries insertions relative to the
+# sequence, so the offset is not derivable from the sequence alone; the identity self-check in
+# functional_site_stats is what stops a wrong one from reporting a neighbouring residue.
+#
+# TP53 (P04637): already UniProt numbering. **R248 and R273 are DNA-contact residues; R175 is
+# not** — it is a conformational mutant that distorts the DNA-binding domain fold rather than
+# losing a contact (the contact-vs-structural split from the DNA-binding domain crystal
+# structure). All three are cancer *hotspots*, which is a mutation-frequency claim from the TP53
+# mutation databases rather than a structural one.
+#
+# R175 therefore sits on both sides of the comparison this module exists to make: the finding in
+# the docstring is that catalytic residues look structurally like buried spandrels, and R175 is a
+# functional site whose mechanism *is* structural. Kept, because it is a genuine hotspot and this
+# helper is descriptive — but read its row knowing that, and do not treat the set as three
+# equivalent "DNA-contact" sites.
 KNOWN_FUNCTIONAL_SITES: dict[str, dict[int, str]] = {
     "P62593": {68: "S", 71: "K", 164: "E"},
     "P04637": {175: "R", 248: "R", 273: "R"},

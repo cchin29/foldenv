@@ -138,3 +138,12 @@ MuLAN — see [`NOTICE`](https://github.com/cchin29/foldenv/blob/main/NOTICE). L
 **CC BY-NC-SA 4.0** (see [`LICENSE`](https://github.com/cchin29/foldenv/blob/main/LICENSE)),
 the same license as MuLAN: free for attributed, non-commercial use; derivatives must share
 alike.
+
+## Acknowledgements
+
+This work was carried out during a 2026 summer research internship at the Laboratoire de Biologie
+Computationnelle, Quantitative et Synthétique — the Laboratory of Computational, Quantitative and
+Synthetic Biology ([CQSB](https://lcqb.fr/), UMR 7238, CNRS–Sorbonne Université), Paris.
+
+The internship was supported by a fellowship from the France-Stanford Center for Interdisciplinary
+Studies, Stanford Global Studies Division, Stanford University.
