@@ -8,7 +8,7 @@ residues.
 Decisions and their rationale live in `decisions.yaml`.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 import os as _os
 import sys as _sys
 
