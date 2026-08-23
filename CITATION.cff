@@ -16,8 +16,8 @@ authors:
     given-names: Connor
     email: cchin29@stanford.edu
     affiliation: Stanford University
-version: "0.1.0"
-date-released: "2026-08-02"
+version: "0.1.1"
+date-released: "2026-08-22"
 license: CC-BY-NC-SA-4.0
 license-url: "https://creativecommons.org/licenses/by-nc-sa/4.0/"
 url: "https://github.com/cchin29/foldenv"
@@ -27,7 +27,7 @@ repository-code: "https://github.com/cchin29/foldenv"
 # tag claims an artifact nobody can fetch. Bump all three in the release commit.
 #
 # No `identifiers:` block yet -- there is no DOI for the software itself. If one is minted from
-# the v0.1.0 tag, add it here in the same pass.
+# the v0.1.1 tag, add it here in the same pass.
 #
 # `issue`, not `number`, for a periodical issue: CFF 1.2 defines `number` as the accession
 # number of a work, which is not what a journal issue is. Long author lists are truncated to

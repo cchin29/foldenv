@@ -25,12 +25,11 @@ per-residue embedding · structural bioinformatics · mutation effect featurizat
 ## Install
 
 ```bash
-pip install "git+https://github.com/cchin29/foldenv@v0.1.0"
-pip install "foldenv[saprot] @ git+https://github.com/cchin29/foldenv@v0.1.0"   # + mini3di, for SaProt's 3Di embeddings
+pip install foldenv
+pip install "foldenv[saprot]"   # + mini3di, for SaProt's 3Di embeddings
 ```
 
-Not on PyPI yet, so `pip install foldenv` resolves to nothing; install from the git tag and pin
-it. `esmc_600m` additionally needs the EvolutionaryScale SDK (`pip install esm`), which conflicts
+`esmc_600m` additionally needs the EvolutionaryScale SDK (`pip install esm`), which conflicts
 with the pinned `transformers` and so belongs in its own environment.
 
 **External binary:** secondary structure + RSA need the **`mkdssp`** binary (DSSP v4).
