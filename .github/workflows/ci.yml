@@ -8,7 +8,9 @@ on:
 
 jobs:
   test:
-    name: tests (python ${{ matrix.python-version }})
+    # The OS is in the name because two legs share a Python version -- without it they are
+    # indistinguishable in the UI, and `gh run view --job` matches by name and returns the wrong log.
+    name: tests (python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
