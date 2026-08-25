@@ -14,7 +14,6 @@ env/
 
 # foldenv on-disk cache (AlphaFold mmCIFs, DSSP, per-protein embeddings)
 .foldenv_cache/
-.struct_context_cache/
 
 # Test / tooling caches
 .pytest_cache/

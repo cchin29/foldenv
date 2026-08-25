@@ -66,7 +66,7 @@ def test_sa_sequence_interleaves_and_masks_noncanonical():
 
 
 def test_esmc_reroutes_off_mps(monkeypatch):
-    import torch
+    torch = pytest.importorskip("torch")
 
     # Simulate a Mac: get_device() returns MPS, no CUDA.
     monkeypatch.setattr("foldenv.plm.get_device", lambda: torch.device("mps"))
@@ -77,7 +77,7 @@ def test_esmc_reroutes_off_mps(monkeypatch):
 
 
 def test_mps_ok_model_keeps_mps(monkeypatch):
-    import torch
+    torch = pytest.importorskip("torch")
 
     monkeypatch.setattr("foldenv.plm.get_device", lambda: torch.device("mps"))
     dev = E.resolve_device("ankh", device=None)
@@ -85,6 +85,7 @@ def test_mps_ok_model_keeps_mps(monkeypatch):
 
 
 def test_explicit_device_honored():
+    pytest.importorskip("torch")  # resolve_device reaches torch through plm's guard
     dev = E.resolve_device("ankh", device="cpu")
     assert dev.type == "cpu"
 

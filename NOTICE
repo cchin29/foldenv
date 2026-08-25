@@ -1,9 +1,10 @@
 foldenv — NOTICE
 ================
 
-`foldenv` was developed inside the MuLAN codebase and extracted into a standalone project.
-Most of the code (structure fetch/parse, DSSP/RSA, contacts, context assembly, disk
-persistence, validation, analysis, and the tool wrapper) is original work by Connor Chin.
+`foldenv` was developed inside a private research fork of the MuLAN codebase and extracted
+into a standalone project. Most of the code (structure fetch/parse, DSSP/RSA, contacts,
+context assembly, disk persistence, validation, analysis, and the tool wrapper) is original
+work by Connor Chin.
 
 Adapted from MuLAN
 ------------------

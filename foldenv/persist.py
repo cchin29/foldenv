@@ -2,13 +2,13 @@
 
 `context.py` holds parsed structure, DSSP, the contact KD-tree, and the one PLM forward
 pass in in-memory dicts (L1). Those vanish with the process, so a multi-protein ×
-multi-config sweep (the P1/P2 eval expansion) re-pays the two costly steps — **mkdssp** and
+multi-config sweep re-pays the two costly steps — **mkdssp** and
 the **per-protein PLM forward pass** — every fresh run. This module adds a read-through
 **disk** cache (L2) under `.foldenv_cache/`, so those two are computed
 once per (protein, relevant-config) and reused across processes.
 
 Only DSSP and embeddings are persisted. The raw AlphaFold/RCSB mmCIF already persists
-(`fetch.py`); the contact KD-tree is cheap to rebuild (not cached here, per §4).
+(`fetch.py`); the contact KD-tree is cheap to rebuild, so it is not cached here (D4).
 
 Keying (what changes the artifact → what the on-disk path/version must include):
 
@@ -21,13 +21,19 @@ Keying (what changes the artifact → what the on-disk path/version must include
   structure must invalidate it, exactly as structure-aware embeddings already do). We key on
   the executable *string*, not its detected version (avoids a subprocess on every lookup); a
   correctness re-run across identically-named binaries still has the `persist:false` escape.
-* **Embedding** depends on accession + model name; the tensor is CPU/device-agnostic
-  (`embed_protein` returns `.cpu()`), so one forward pass is shared across *all* geometry
-  configs (P1/P2/P4 all reuse it). The model name goes in the filename. **Structure-aware
-  models** (SaProt) additionally derive a 3Di channel from the AF backbone, so their key also
-  carries a fingerprint of the mmCIF file (size+mtime) — otherwise a same-length AF-DB
-  re-release would be served the stale coordinates' embedding (the length guard can't catch
-  same-length structural drift).
+* **Embedding** depends on accession + model name + the **transformers version** that
+  tokenized it; the tensor is CPU/device-agnostic (`embed_protein` returns `.cpu()`), so one
+  forward pass is shared across *all* geometry configs (every contact/RSA variant reuses it).
+  The model name and a `major.minor` transformers tag go in the filename: tokenization is not
+  stable across the whole supported transformers range (Ankh3 loses a spurious leading `<unk>`
+  at 4.50, and 5.x reintroduces one across the Ankh checkpoints), so the same accession+model
+  under two versions is two different tensors and they must not land on the same path. Models
+  loaded through the `esm` SDK take no tag — they never touch transformers, so tagging them
+  would invalidate their cache on every unrelated upgrade. **Structure-aware models** (SaProt)
+  additionally derive a 3Di channel from the AF backbone, so their key also carries a
+  fingerprint of the mmCIF file (size+mtime) — otherwise a same-length AF-DB re-release would
+  be served the stale coordinates' embedding (the length guard can't catch same-length
+  structural drift).
 
 A ``_FORMAT`` tag is embedded in each filename so a schema change invalidates cleanly (old
 files are simply never looked up). Corrupt/unreadable files are treated as a miss, never an
@@ -42,15 +48,17 @@ import math
 import os
 import re
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 from .dssp import ResidueDSSP
 
 # Bump when the *stored values* of an artifact can change: the on-disk schema, OR the
 # computation that produces them — `run_dssp` / MaxASA tables (dssp.py) for DSSP, or
-# `embed_protein`'s tokenization/slicing (embedding.py) for embeddings. Only the RSA-table
-# *name* and model *name* are in the path; a change to the table *numbers* or the embed logic
-# would otherwise silently serve stale disk artifacts, so bump the relevant _FORMAT then.
+# `embed_protein`'s tokenization/slicing (embedding.py) for embeddings. The path carries only
+# the RSA-table *name*, the model *name*, and the transformers *major.minor*; a change to the
+# table numbers, or to foldenv's own embed logic at a fixed transformers version, would
+# otherwise silently serve stale disk artifacts, so bump the relevant _FORMAT then.
 _DSSP_FORMAT = 1
 _EMB_FORMAT = 1
 
@@ -185,19 +193,49 @@ def _structure_fingerprint(cfg: dict, accession: str) -> str:
         return "0"
 
 
+@lru_cache(maxsize=1)
+def _transformers_tag() -> str:
+    """`major.minor` of the installed transformers (e.g. `4.57`), or `na` when unavailable.
+
+    Read from distribution metadata rather than by importing transformers, so a cache *lookup*
+    stays free — this runs on every embedding hit, including the ones whose whole point is to
+    skip loading the PLM stack. Cached because the installed version cannot change mid-process.
+    `major.minor` is the right granularity: the tokenization differences that make two tensors
+    incomparable land on minor releases, and patch-level keying would evict good caches.
+    Deliberately NOT applied to the DSSP key — DSSP is mkdssp + coordinates only.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        raw = version("transformers")
+    except PackageNotFoundError:
+        return "na"
+    m = re.match(r"(\d+)\.(\d+)", raw)
+    return f"{m.group(1)}.{m.group(2)}" if m else "na"
+
+
 def _emb_path(cfg: dict, accession: str, model_name: str) -> Path:
-    # SaProt & other structure-aware models bake the AF backbone into the embedding, so their
-    # key must track the structure file too (finding: same-length re-releases). Sequence-only
-    # models are fully determined by accession+model, so we don't fingerprint them (a structure
-    # refresh at equal length would needlessly invalidate an identical embedding).
+    # Two optional key components, each added only where it can actually change the tensor:
+    #   `t<major.minor>` — the transformers version that tokenized it (see the module docstring);
+    #     omitted for `esm`-SDK models, which never go through transformers.
+    #   `s<size-mtime>`  — the structure fingerprint. SaProt & other structure-aware models bake
+    #     the AF backbone into the embedding, so their key must track the structure file too
+    #     (finding: same-length re-releases). Sequence-only models are fully determined by
+    #     accession+model+version, so we don't fingerprint them (a structure refresh at equal
+    #     length would needlessly invalidate an identical embedding).
+    # `_EMB_FORMAT` is *not* bumped for this: adding the tag already makes every stale
+    # transformers-path file unreachable, while a bump would also throw away SDK-path caches
+    # that are still perfectly valid.
     from .embedding import get_model_spec
 
-    if get_model_spec(model_name).structure_aware:
-        fp = _structure_fingerprint(cfg, accession)
-        stem = f"{accession}__{model_name}__s{fp}__v{_EMB_FORMAT}.pt"
-    else:
-        stem = f"{accession}__{model_name}__v{_EMB_FORMAT}.pt"
-    return _root(cfg) / "embeddings" / stem
+    spec = get_model_spec(model_name)
+    parts = [accession, model_name]
+    if not spec.sdk:
+        parts.append(f"t{_transformers_tag()}")
+    if spec.structure_aware:
+        parts.append(f"s{_structure_fingerprint(cfg, accession)}")
+    parts.append(f"v{_EMB_FORMAT}")
+    return _root(cfg) / "embeddings" / ("__".join(parts) + ".pt")
 
 
 def load_embedding(cfg: dict, accession: str, model_name: str):
@@ -211,7 +249,9 @@ def load_embedding(cfg: dict, accession: str, model_name: str):
     path = _emb_path(cfg, accession, model_name)
     if not path.exists():
         return None
-    import torch
+    from .embedding import _import_torch  # names the [plm] extra if torch is absent
+
+    torch = _import_torch()
 
     try:
         try:
@@ -241,7 +281,9 @@ def save_embedding(cfg: dict, accession: str, model_name: str, tensor) -> None:
         return
     if not hasattr(tensor, "shape"):  # only real tensors (skip stubs / None)
         return
-    import torch
+    from .embedding import _import_torch
+
+    torch = _import_torch()
 
     path = _emb_path(cfg, accession, model_name)
     cpu_tensor = tensor.contiguous().cpu()

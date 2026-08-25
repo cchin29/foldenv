@@ -1,14 +1,22 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "foldenv"
-version = "0.1.2"
+version = "0.2.0"
 description = "Per-residue structural context (microenvironment) from AlphaFold: relative solvent accessibility (RSA), secondary structure, contacts, pLDDT, and per-residue protein-language-model embeddings."
 readme = "README.md"
-requires-python = ">=3.9,<3.13"
-license = { file = "LICENSE" }
+# Floor only, deliberately. An upper bound here is a resolver gate, not documentation: on a
+# Python above it pip does not report "your Python is too new" — it backtracks through this
+# package's own release history and either finds nothing ("No matching distribution found",
+# which reads as if the package never existed) or silently installs an ancient release with a
+# laxer bound. It would also make every CPython release require a foldenv release just to
+# permit it. The tested range is stated by the classifiers below and built by the CI matrix;
+# add a ceiling here only if some future Python is measured to actually break.
+requires-python = ">=3.9"
+license = "CC-BY-NC-SA-4.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Connor Chin", email = "cchin29@stanford.edu" }]
 keywords = [
     "protein structure",
@@ -35,30 +43,57 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
-    "License :: Free for non-commercial use",
 ]
+# Core: the structural path only (RSA, secondary structure, contacts, pLDDT). Deliberately
+# free of torch/transformers -- they are gigabytes of wheels for a path many callers never
+# take, and `embedding.model = "none"` runs the whole structural pipeline without them.
 dependencies = [
     "numpy",
     "requests",
     "pyyaml",
-    "biopython",
-    # PLM embedding (the default get_structural_context path). Sequence models are tested on
-    # transformers 4.27–4.45; ESM C needs >=4.57 in a separate environment (see README).
-    "torch>=2.0",
-    "transformers>=4.27,<4.46",
+    # >=1.80 is a hard floor, not a preference: `dssp.run_dssp` passes `dssp_version=` to
+    # `dssp_dict_from_pdb_file`, and that parameter (with the `--output-format=dssp` it drives
+    # for mkdssp v4, whose default mmCIF output the parser cannot read) first ships in 1.80.
+    # On 1.79 the call is a TypeError on the unexpected keyword, so every DSSP-backed field --
+    # secondary structure and RSA -- fails. Verified against mkdssp 4.6.1: 1.80 parses TEM-1's
+    # 286 residues, 1.79 raises.
+    "biopython>=1.80",
 ]
 
 [project.optional-dependencies]
+# PLM embedding. The transformers window is wide because no single pin satisfies every
+# checkpoint: prot_bert needs <5, while ESM C 6B (which documents >=4.57) has no working
+# transformers path on any measured release. foldenv.plm enforces each checkpoint's own
+# range at load time instead. Measured across 4.44-4.57.6; 5.x breaks prot_bert's tokenizer and
+# makes the Ankh tokenizers emit an unflagged <unk> that misaligns every residue for the two
+# checkpoints without a residue-count anchor, hence the ceiling.
+# `sentencepiece` is not optional: without it the T5/Ankh tokenizers behind ProstT5,
+# prot_t5_xl_half and the Ankh3 pair raise on load, so an extra without it cannot serve the
+# models this package documents.
+plm = ["torch>=2.0", "transformers>=4.27,<5", "sentencepiece"]
 # SaProt's structure-aware 3Di half is computed from the AlphaFold backbone via mini3di.
-saprot = ["mini3di"]
-dev = ["pytest"]
-# ESM C needs transformers>=4.57, which conflicts with the pin above -- install in its own env.
-esmc = ["esm"]
+saprot = ["mini3di", "foldenv[plm]"]
+# ESM C via the `esm` SDK. The SDK does not go through transformers, but foldenv's own device
+# handling imports torch, so name it here rather than relying on `esm` pulling it transitively.
+# NOTE: this is the one extra with a narrower Python window than the package. `esm` >=3.2.2
+# requires ==3.12; the newest release supporting anything older is 3.2.1.post1 (>=3.10), and no
+# release supports 3.9 or >=3.13 at all. So `pip install "foldenv[esmc]"` resolves only on
+# 3.10-3.12, and only on 3.12 does it get the current SDK. Deliberately left unmarked: an
+# environment marker would silently install an extra that cannot work rather than failing.
+esmc = ["esm", "torch>=2.0"]
+# `tomli` only below 3.11, where `tomllib` is not yet stdlib: without it the packaging tests
+# degrade to skips on the 3.9/3.10 CI legs, which is a green run that checked nothing.
+dev = ["pytest", "tomli; python_version < '3.11'"]
 
 [project.urls]
 Homepage = "https://github.com/cchin29/foldenv"
 Repository = "https://github.com/cchin29/foldenv"
+Changelog = "https://github.com/cchin29/foldenv/blob/main/CHANGELOG.md"
+Issues = "https://github.com/cchin29/foldenv/issues"
 
 [tool.setuptools]
 packages = ["foldenv"]

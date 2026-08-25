@@ -1,12 +1,15 @@
 name: Publish to PyPI
 
-# Publishes on a version tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+# Publishes on a version tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`.
 # Uses PyPI Trusted Publishing (OIDC) — no API token is stored. One-time PyPI setup:
 #   PyPI → your account → Publishing → add a "pending publisher":
 #     PyPI project name: foldenv
 #     Owner: cchin29   Repository: foldenv
 #     Workflow name: publish.yml   Environment: pypi
-# Remember to bump `version` in pyproject.toml before tagging (PyPI rejects re-uploads).
+# The version is NOT taken from the tag -- setuptools reads it from pyproject.toml -- so a tag
+# that disagrees with the tree would publish the tree's version under the tag's name. A PyPI
+# upload cannot be undone (yank hides a release; it does not free the version), so the job
+# asserts the two agree before it builds anything.
 
 on:
   push:
@@ -23,7 +26,31 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          # Not the package's floor -- this only runs the build/upload tooling. Kept ahead of
+          # `build` and `twine`'s own requires-python (both moved to >=3.10): an interpreter
+          # below their floor silently resolves an older twine, and twine <6.1 rejects the
+          # Metadata-Version 2.4 that the PEP 639 license expression makes unconditional.
+          python-version: "3.12"
+
+      - name: Tag must match the packaged version
+        # The one failure here that cannot be walked back. GITHUB_REF_NAME is the tag ("v0.2.0");
+        # strip the leading v and compare against what the build will actually stamp.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          echo "tag=$tag  pyproject=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match pyproject.toml version $pkg -- refusing to publish"
+            exit 1
+          fi
+
+      - name: Gate on the offline test suite
+        # publish.yml is triggered by a tag, which can point at a commit that main's CI never
+        # ran. This is the offline subset only -- seconds, no torch download -- which is enough
+        # to catch the metadata and packaging class of bug. The full matrix runs on main.
+        run: |
+          python -m pip install -e ".[dev]"
+          FOLDENV_ALPHAFOLD_API_BASE=http://127.0.0.1:9 python -m pytest -q
 
       - name: Build sdist + wheel
         run: |

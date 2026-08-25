@@ -49,8 +49,9 @@ cache:
 # reproducible from this repository. MuLAN's published Ankh-large S1102 result is 0.868; 0.832 is
 # a local from-scratch reproduction that falls short of it, and ProstT5 has no published
 # counterpart on this benchmark at all. Recorded to say what the default was chosen on, not as a
-# claim this package supports. The embedding is auxiliary to the real signal (RSA + contacts). Per-model dims come from embedding.py's
-# registry (EMBEDDING_MODELS), not this file — set `model` and the dim follows.
+# claim this package supports. The embedding is auxiliary to the real signal (RSA + contacts).
+# Per-model dims come from embedding.py's registry (EMBEDDING_MODELS), not this file — set
+# `model` and the dim follows.
 #   ankh        — Ankh-large, T5 encoder, 1536-d            (default)
 #   ankh3_large — Ankh3-large, T5 encoder, 1536-d           ([NLU] prefix)
 #   ankh3_xl    — Ankh3-XL, T5 encoder, 2560-d              ([NLU] prefix)
@@ -59,21 +60,23 @@ cache:
 #   saprot_1.3b — SaProt 1.3B, structure-aware, 1280-d      (deeper, not wider)
 #   esm2_3b     — ESM2-3B, 2560-d                           (sweep baseline)
 #   esm2_650m   — ESM2-650M, 1280-d                         (lighter)
-#   esmc_600m
-#   esmc_6b     — ESM C 6B, 2560-d                          (best PLM; heavy, off-MPS)
+#   esmc_600m   — ESM C 600M, 1152-d                        (via the `esm` SDK, [esmc] extra)
+#   esmc_6b     — ESM C 6B, 2560-d                          (heavy, off-MPS; its transformers
+#                                                            path loads on no measured release
+#                                                            — use esmc_600m)
 #   none        — skip the embedding
 embedding:
   model: ankh
   device: auto           # auto | cpu | cuda | mps. ESM C 6B is never placed on MPS
                          # (mps_ok=False in embedding.EMBEDDING_MODELS) — it reroutes to
-                         # CUDA/CPU for the Linux box or cluster GPUs.
+                         # CUDA/CPU instead.
 
 # D6 — DSSP version. mkdssp 4 defaults to mmCIF, which breaks Biopython's legacy-format
-# parser; force the legacy text format (or install mkdssp 3.x).
+# parser; force the legacy text format.
 dssp:
   executable: mkdssp
-  # Documents the D6 resolution; not consumed directly — Biopython 1.87 detects mkdssp's
-  # version and injects `--output-format=dssp` for v4 itself (verified in its DSSP wrapper).
+  # Documents the D6 resolution; not consumed directly — dssp.py detects mkdssp's version and
+  # hands it to Biopython (>=1.80), which then injects `--output-format=dssp` for v4.
   output_format: dssp
 
 # Structure source.

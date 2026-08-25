@@ -1,6 +1,7 @@
 """A framework-neutral tool wrapper for `get_structural_context`.
 
-Exposes the deliverable as a self-describing callable that any agent framework can register:
+Exposes `get_structural_context` as a self-describing callable that any agent framework can
+register:
   * `TOOL_NAME` / `TOOL_DESCRIPTION` / `INPUT_SCHEMA` / `OUTPUT_SCHEMA` — plain JSON-Schema.
   * `tool_spec(style=...)` — the descriptor shaped for "anthropic" (`input_schema`),
     "openai" (function `parameters`), or "plain".

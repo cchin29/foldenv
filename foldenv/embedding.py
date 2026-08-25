@@ -12,6 +12,11 @@ handles each model's prefixes and per-residue slicing). SaProt needs a structure
 input, so it has a dedicated path here.
 
 One forward pass per protein; the caller (M5) slices at `position` and caches per protein.
+
+torch/transformers are an optional extra (`pip install "foldenv[plm]"`), so nothing here may
+import them at module level: `get_structural_context` with `embedding.model = "none"` must keep
+working on a bare install. Every torch import in this module goes through `_import_torch`, and
+every backend import is guarded so a missing piece names the extra that supplies it.
 """
 from __future__ import annotations
 
@@ -26,7 +31,7 @@ from . import constants as C
 # --- model registry --------------------------------------------------------------------
 # name → PLM key in constants.PLM_ENCODERS, output dim, whether it needs 3Di structure,
 # and whether it may run on Apple MPS. ESM C 6B is too large / MPS-kernel-incompatible —
-# it's intended for the Linux CPU box or cluster GPUs, so `mps_ok=False` routes it off MPS.
+# it targets a large-RAM CPU host or CUDA GPUs, so `mps_ok=False` routes it off MPS.
 
 
 @dataclass(frozen=True)
@@ -48,7 +53,8 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
     "esm2_3b": EmbeddingModelSpec("esm", 2560, False),         # ESM2-3B (sweep baseline)
     "esm2_650m": EmbeddingModelSpec("esm_650M", 1280, False),  # ESM2-650M (lighter)
     # ESM Cambrian via the `esm` SDK (transformers-independent). 600M is MPS-friendly (bf16,
-    # ~1.5 s/protein) and locally loadable; the 6B needs transformers>=4.57 / Forge / cluster.
+    # ~1.4 s/protein) and locally loadable; the 6B has no working transformers path (see plm.py)
+    # and is a Forge-API / cluster target.
     "esmc_600m": EmbeddingModelSpec("esmc_600m", 1152, False, mps_ok=True, sdk=True),
     "esmc_6b": EmbeddingModelSpec("esmc_6b", 2560, False, mps_ok=False),  # ESM C 6B (CPU/GPU only)
 }
@@ -57,6 +63,22 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
 _AA_MASK = "#"               # SaProt AA-half mask for non-canonical residues
 _CANONICAL = set("ACDEFGHIKLMNPQRSTVWY")
 _GAP_3DI = "d"               # valid Foldseek/mini3di state for un-encodable residues
+
+
+def _import_torch():
+    """Return the `torch` module, or foldenv's actionable optional-dependency error.
+
+    Importing `.plm` runs `require_plm_dependencies("torch")` at its module level, so routing
+    every torch import in this module through here turns a bare `pip install foldenv` into the
+    message naming `foldenv[plm]` instead of ModuleNotFoundError('torch'). The import stays
+    inside the functions that need it — a module-level one would make the structural path
+    (which never embeds anything) depend on the whole deep-learning stack.
+    """
+    from . import plm  # noqa: F401  — its module-level guard is the point of this indirection
+
+    import torch
+
+    return torch
 
 
 def get_model_spec(model_name: str) -> EmbeddingModelSpec:
@@ -80,9 +102,9 @@ def resolve_device(model_name: str, device: Any = None):
     Explicit `device` (including the string "mps") is honored but warned about for a model
     flagged `mps_ok=False`. With `device=None`/"auto", falls back to the shared
     `get_device()`, then reroutes an MPS pick to CUDA (if present) or CPU for such models —
-    so ESM C 6B lands on the Linux CPU box / cluster GPUs, never the Mac's MPS.
+    so ESM C 6B lands on CPU or CUDA, never Apple's MPS.
     """
-    import torch
+    torch = _import_torch()
 
     spec = get_model_spec(model_name)
     if device is not None and str(device) != "auto":
@@ -90,7 +112,7 @@ def resolve_device(model_name: str, device: Any = None):
         if dev.type == "mps" and not spec.mps_ok:
             warnings.warn(
                 f"{model_name} is not supported on MPS; expect failures/OOM. "
-                "Run it on CPU (Linux box) or CUDA (cluster).",
+                "Run it on CPU or CUDA instead.",
                 stacklevel=2,
             )
         return dev
@@ -102,7 +124,7 @@ def resolve_device(model_name: str, device: Any = None):
         dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         warnings.warn(
             f"{model_name} cannot use MPS — routing to {dev.type.upper()} "
-            "(intended for the Linux CPU box or cluster GPUs).",
+            "(this checkpoint targets a large-RAM CPU host or a CUDA GPU).",
             stacklevel=2,
         )
     return dev
@@ -177,13 +199,26 @@ def load_embedder(model_name: str, device: Any = None):
     `resolve_device` so ESM C 6B never lands on MPS.
     """
     spec = get_model_spec(model_name)
-    device = resolve_device(model_name, device)
     if spec.sdk:  # ESM C via the `esm` SDK — no transformers tokenizer (tokens are internal)
-        from esm.models.esmc import ESMC
+        # Checked before `resolve_device`, which reaches torch: on an install with neither, the
+        # SDK's own extra is the one to name, and naming [plm] first would cost the caller a
+        # multi-gigabyte download before telling them they still need [esmc].
+        try:
+            from esm.models.esmc import ESMC
+        except ModuleNotFoundError as exc:  # a separate extra from [plm]: name that one
+            raise ImportError(
+                f"{model_name} loads through the `esm` SDK, which is not installed — "
+                'install it with: pip install "foldenv[esmc]"'
+            ) from exc
 
+        device = resolve_device(model_name, device)
         model = ESMC.from_pretrained(spec.plm_key, device=device).eval()
         return model, None
+    device = resolve_device(model_name, device)
     if spec.structure_aware:  # SaProt: EsmForMaskedLM, structure-aware hidden states
+        from .plm import require_plm_dependencies
+
+        require_plm_dependencies("transformers")  # this branch bypasses plm's own loader
         from transformers import AutoTokenizer, EsmForMaskedLM
 
         model_id = C.PLM_ENCODERS[spec.plm_key]
@@ -203,7 +238,7 @@ def _embed_protein_sdk(model, sequence: str):
     forward. Output is `[1, L+2, dim]` with leading BOS / trailing EOS; we strip both, cast
     off MPS bfloat16 to float32, and move to CPU to match the transformers path's contract.
     """
-    import torch
+    torch = _import_torch()
     from esm.sdk.api import ESMProtein, LogitsConfig
 
     seq = sequence.upper()
@@ -232,16 +267,18 @@ def embed_protein(
 
     For SaProt, `structure` (a Biopython Structure) is required to build the 3Di half.
     `model`/`tokenizer` may be supplied to reuse an already-loaded pair (per-protein cache);
-    otherwise they are loaded on `device` (resolved to keep ESM C off MPS).
+    otherwise they are loaded on `device` (resolved to keep ESM C 6B off MPS).
     """
-    import torch
-
     spec = get_model_spec(model_name)
     if spec.sdk:  # ESM C SDK path — no transformers tokenizer, so guard on the model only
+        # torch is deliberately not imported above this dispatch: on an install with neither
+        # stack, the SDK path's missing piece is `esm`, and reaching _import_torch() first
+        # would name [plm] and cost the caller a multi-gigabyte download for the wrong extra.
         if model is None:
             model, _ = load_embedder(model_name, device)
         return _embed_protein_sdk(model, sequence)
 
+    torch = _import_torch()
     if model is None or tokenizer is None:
         model, tokenizer = load_embedder(model_name, device)
 

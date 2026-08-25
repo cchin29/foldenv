@@ -1,7 +1,9 @@
 """DSSP → secondary structure (H/E/C) + RSA.
 
-Runs mkdssp (via Biopython's `dssp_dict_from_pdb_file`, which auto-detects the version and
-passes `--output-format=dssp` for v4 — the D6 mmCIF gotcha), then:
+Runs mkdssp via Biopython's `dssp_dict_from_pdb_file`. That function does not probe the
+executable itself (only Biopython's higher-level `DSSP` class does), so `_detect_version` reads
+the version here and passes it in, which is what makes Biopython emit `--output-format=dssp`
+for v4 — the D6 mmCIF gotcha. Then:
   * maps the 8-state SS down to 3 (`H/G/I → H`, `E/B → E`, else `C`);
   * normalizes DSSP's **absolute** ASA to RSA with an explicit MaxASA table (D3), so the
     `rsa.max_asa_table` config choice is honored and recorded rather than hidden inside

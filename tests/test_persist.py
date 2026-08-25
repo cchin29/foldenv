@@ -1,7 +1,8 @@
-"""L2 disk-persistence tests (L2 persistence) — no network, no mkdssp, no PLM weights.
+"""Disk-persistence tests — no network, no mkdssp, no PLM weights.
 
-We construct DSSP records and a small embedding tensor by hand and round-trip them through
-`persist`, so these run fast in any `.venv-structctx`. `torch` is already a repo dep.
+DSSP records and a small embedding tensor are built by hand and round-tripped through
+`persist`, so these are fast anywhere. `torch` comes from the `[plm]` extra; the file skips
+without it.
 """
 import json
 

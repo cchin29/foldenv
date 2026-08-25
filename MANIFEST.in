@@ -1,0 +1,11 @@
+# The sdist is the archival artifact: it should contain what a reader needs to audit the
+# release, not just what is importable. setuptools' defaults pick up `tests/test_*.py` but
+# miss `tests/__init__.py` (so the test package arrives incomplete), and skip the docs the
+# README links to and the citation metadata.
+include CITATION.cff
+include CHANGELOG.md
+include CONTRIBUTING.md
+include NOTICE
+include tests/__init__.py
+include tests/TESTS.md
+recursive-include docs *.md

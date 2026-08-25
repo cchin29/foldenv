@@ -1,5 +1,4 @@
 """M3 tests: deterministic synthetic geometry + live TEM-1 invariants."""
-import shutil
 import tempfile
 
 import numpy as np

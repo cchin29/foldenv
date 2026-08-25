@@ -60,7 +60,8 @@ PLM_ENCODERS = {
     "protbert": "Rostlab/prot_bert",
     "prott5_xl_half": "Rostlab/prot_t5_xl_half_uniref50-enc",
     "prostt5": "Rostlab/ProstT5",
-    "esmc_6b": "EvolutionaryScale/esmc-6b-2024-12",  # ESM Cambrian 6B, 2560-dim (needs transformers>=4.57)
+    "esmc_6b": "EvolutionaryScale/esmc-6b-2024-12",  # ESM Cambrian 6B, 2560-dim (no measured
+    # transformers release registers the `esmc` model_type — use esmc_600m via the `esm` SDK)
     "ankh3_large": "ElnaggarLab/ankh3-large",        # Ankh3-large, T5 encoder, 1536-dim
     "ankh3_xl": "ElnaggarLab/ankh3-xl",              # Ankh3-XL, T5 encoder, 2560-dim
     "saprot": "westlake-repl/SaProt_650M_AF2",       # SaProt 650M, ESM2-650M arch + SA (AA+3Di) vocab, 1280-dim

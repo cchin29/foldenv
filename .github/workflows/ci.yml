@@ -8,11 +8,29 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: tests (python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11"]
+        # Must stay in lockstep with the "Programming Language :: Python" classifiers in
+        # pyproject.toml -- those are the claim of what is supported, and a version claimed
+        # but never built on is a claim nothing checks. test_ci_matrix_matches_classifiers
+        # fails if these two lists drift apart, so add a version to both or neither.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: ["ubuntu-latest"]
+        include:
+          # 3.9 is pinned to 24.04 deliberately: actions/python-versions publishes no 3.9
+          # build for ubuntu-26.04, so this leg would start failing with "Version 3.9 not
+          # found" the day `ubuntu-latest` advances. 3.10+ all have 26.04 builds.
+          - python-version: "3.9"
+            os: "ubuntu-24.04"
+          # One macOS leg. The MPS *routing* is already unit-tested by monkeypatching
+          # get_device, so what this actually buys is arm64 dependency resolution -- torch,
+          # sentencepiece and mini3di wheels -- which nothing else checks, on the platform
+          # this package is developed and most likely used on.
+          - python-version: "3.12"
+            os: "macos-latest"
 
     steps:
       - uses: actions/checkout@v5
@@ -24,11 +42,24 @@ jobs:
           cache: pip
 
       - name: Install CPU-only torch
-        # Avoid pulling the large CUDA wheels in CI.
+        # torch is no longer a core dependency -- it lives in the [plm] extra -- but the extras
+        # this job installs pull it in. Pre-installing the CPU build from PyTorch's own index
+        # keeps the multi-GB CUDA wheels out of CI: the package install below then finds
+        # "torch>=2.0" already satisfied and leaves it alone.
         run: pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install package (with dev + saprot extras)
-        run: pip install -e ".[dev,saprot]"
+      - name: Install package (dev + plm + saprot extras)
+        # [plm] is named explicitly rather than inherited through [saprot]'s "foldenv[plm]"
+        # self-reference: exercising the PLM stack is the point of this job, so the requirement
+        # is stated rather than implied. [saprot] adds mini3di for the structure-aware 3Di half;
+        # [dev] adds pytest. [esmc] is deliberately left out -- the `esm` SDK is a large download
+        # and every test that would use it is opt-in heavy.
+        run: pip install -e ".[dev,plm,saprot]"
+
+      - name: Report the resolved PLM stack
+        # foldenv.plm enforces per-checkpoint transformers windows at load time, so the resolved
+        # transformers version is the first thing worth knowing when this job goes red.
+        run: python -c "import torch, transformers; print('torch', torch.__version__, '| transformers', transformers.__version__)"
 
       - name: Run tests
         # Deterministic/offline: point the AlphaFold API base at an unreachable host so the
@@ -38,3 +69,133 @@ jobs:
         env:
           FOLDENV_ALPHAFOLD_API_BASE: http://127.0.0.1:9
         run: pytest -q
+
+  bare-install:
+    name: bare install (no torch, no transformers)
+    runs-on: ubuntu-latest
+    # The structural path -- RSA, secondary structure, contacts, pLDDT -- must run on a plain
+    # "pip install foldenv", with the PLM stack absent rather than merely unused. This job
+    # installs the package with no extras and proves that claim end to end.
+    env:
+      # Belt and braces around "no extras": this constraint file applies to every pip
+      # install in the job, so if anything ever does reach for torch or transformers --
+      # a stray extra, a new core dependency, a transitive requirement -- the resolve
+      # fails loudly instead of quietly downloading gigabytes and hiding the regression.
+      PIP_CONSTRAINT: ${{ github.workspace }}/.ci-no-plm-constraints.txt
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Make torch and transformers uninstallable
+        # "<0" matches no release that exists, so a request for either package is a resolution
+        # error at metadata time -- no wheel is ever fetched.
+        run: |
+          cat > "$PIP_CONSTRAINT" <<'EOF'
+          torch<0
+          transformers<0
+          EOF
+          cat "$PIP_CONSTRAINT"
+
+      - name: Install the package with no extras
+        # A real (non-editable) install, so package data such as decisions.yaml has to ship.
+        # pytest is installed as the test harness only; it is not a package dependency.
+        run: |
+          pip install .
+          pip install pytest
+          pip list
+
+      - name: Assert the PLM stack is absent
+        run: |
+          python - <<'PY'
+          import importlib.util
+          missing = [m for m in ("torch", "transformers") if importlib.util.find_spec(m) is None]
+          assert missing == ["torch", "transformers"], f"leaked into the bare install: {missing}"
+          print("torch and transformers are both absent, as intended")
+          PY
+
+      - name: Structural path works without torch
+        # Runs outside the checkout so the *installed* package is exercised rather than the
+        # source tree next to it. No network, no mkdssp, no weights: the geometry is synthetic
+        # and the assertions are the same invariants the offline unit tests check.
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import sys
+
+          # Every module on the structural path must import with the PLM stack absent. A
+          # module-level "import torch" anywhere here is exactly the regression this catches.
+          import foldenv
+          for mod in ("config", "fetch", "dssp", "contacts", "embedding",
+                      "context", "persist", "tool", "analysis", "validation"):
+              __import__(f"foldenv.{mod}")
+          print("foldenv", foldenv.__version__, "imported on", sys.version.split()[0])
+
+          import numpy as np
+          from Bio.PDB.Atom import Atom
+          from Bio.PDB.Chain import Chain
+          from Bio.PDB.Model import Model
+          from Bio.PDB.Residue import Residue
+          from Bio.PDB.Structure import Structure
+
+          from foldenv import config, contacts, dssp, embedding
+
+          # Contacts on five CA atoms spaced along the x-axis at 0, 4, 7, 12, 16 A.
+          s, m, c = Structure("t"), Model(0), Chain("A")
+          for i, x in enumerate([0.0, 4.0, 7.0, 12.0, 16.0], start=1):
+              r = Residue((" ", i, " "), "ALA", "")
+              r.add(Atom("CA", np.array([x, 0.0, 0.0]), 99.0, 1.0, " ", "CA", i, "C"))
+              c.add(r)
+          m.add(c)
+          s.add(m)
+          res = contacts.compute_contacts(s, 1, mode="ca", ca_cutoff=8.0, n_nearest=5)
+          assert res.contact_count == 2, res.contact_count
+          assert [x.resnum for x in res.nearest_contacts] == [2, 3]
+
+          # RSA normalization and the SS8 -> SS3 map are pure tables.
+          assert dssp.max_asa("A", "tien2013_theoretical") == 129.0
+          assert dssp.SS8_TO_SS3["G"] == "H"
+
+          # The documented no-PLM configuration loads.
+          assert config.load(overrides={"embedding": {"model": "none"}})["embedding"]["model"] == "none"
+
+          # Asking for a PLM anyway must name the fix, not raise ModuleNotFoundError: torch.
+          for call in (lambda: embedding.load_embedder("ankh"),
+                       lambda: embedding.resolve_device("ankh", device="cpu")):
+              try:
+                  call()
+              except ImportError as e:
+                  assert 'foldenv[plm]' in str(e), e
+              else:
+                  raise AssertionError("a PLM entry point succeeded with no torch installed")
+
+          # Nothing above dragged torch in as a side effect.
+          assert importlib.util.find_spec("torch") is None
+          print("bare structural path OK")
+          PY
+
+      - name: Run the offline structural tests
+        # An explicit allowlist, not "everything except the PLM files": tests that need torch by
+        # construction (device routing, the per-checkpoint version guards) belong to the matrix
+        # job above, and a new one of those must not turn this job red. Same offline setup as the
+        # matrix job -- unreachable AlphaFold host, so the network-gated tests self-skip.
+        env:
+          FOLDENV_ALPHAFOLD_API_BASE: http://127.0.0.1:9
+        run: |
+          pytest -q \
+            tests/test_config.py \
+            tests/test_config_nondefaults.py \
+            tests/test_fetch.py \
+            tests/test_dssp.py \
+            tests/test_contacts.py \
+            tests/test_context.py \
+            tests/test_validation.py \
+            tests/test_analysis.py \
+            tests/test_tool.py \
+            tests/test_version_consistency.py

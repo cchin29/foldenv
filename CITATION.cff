@@ -16,19 +16,20 @@ authors:
     given-names: Connor
     email: cchin29@stanford.edu
     affiliation: Stanford University
-version: "0.1.2"
-date-released: "2026-08-22"
+version: "0.2.0"
+date-released: "2026-08-25"
 license: CC-BY-NC-SA-4.0
 license-url: "https://creativecommons.org/licenses/by-nc-sa/4.0/"
 url: "https://github.com/cchin29/foldenv"
 repository-code: "https://github.com/cchin29/foldenv"
-# `version` and `date-released` track the git tag, `pyproject.toml`, and `foldenv.__version__`
-# together. A CITATION.cff naming a version the package does not is worse than one naming none,
-# and a date ahead of the tag claims an artifact nobody can fetch. Bump all four in the release
-# commit; a metadata version and a module constant that disagree cannot both be right.
+# The version lives in four places that must agree: `version` here, `[project] version` in
+# `pyproject.toml`, `foldenv.__version__` in `foldenv/__init__.py`, and the git tag. A
+# CITATION.cff naming a version the package does not is worse than one naming none, and a
+# `date-released` ahead of the tag claims an artifact nobody can fetch. Bump all four in the
+# release commit; a metadata version and a module constant that disagree cannot both be right.
 #
 # No `identifiers:` block yet -- there is no DOI for the software itself. If one is minted from
-# the v0.1.2 tag, add it here in the same pass.
+# the v0.2.0 tag, add it here in the same pass.
 #
 # `issue`, not `number`, for a periodical issue: CFF 1.2 defines `number` as the accession
 # number of a work, which is not what a journal issue is. Long author lists are truncated to

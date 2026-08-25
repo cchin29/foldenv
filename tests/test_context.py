@@ -1,7 +1,6 @@
 """M5 assembler tests. The default embedding (Ankh, ~2 GB) is skipped by using
 `embedding.model: none`; the real embedding path is an opt-in heavy test."""
 import os
-import tempfile
 
 import pytest
 
@@ -88,9 +87,9 @@ def test_gap_position_degrades_gracefully(monkeypatch):
 
 @live
 def test_gap_position_nulls_embedding(monkeypatch):
-    # C1: at a gap-fill position the embedding must degrade to null WITH the other structural
-    # fields, not return the 'X' placeholder's vector. Fake the embedder (non-null) so a
-    # regression would surface as a non-None embedding.
+    # Consistency invariant: at a gap-fill position the embedding must degrade to null WITH
+    # the other structural fields, not return the 'X' placeholder's vector. Fake the embedder
+    # (non-null) so a regression would surface as a non-None embedding.
     real_seq = context.get_sequence("P62593", config.load(overrides=NO_EMB))
     monkeypatch.setattr(context, "get_sequence", lambda uid, c=None: real_seq + "XXX")
     monkeypatch.setattr(

@@ -1,5 +1,10 @@
 # foldenv — per-residue structural context from AlphaFold
 
+[![PyPI](https://img.shields.io/pypi/v/foldenv.svg)](https://pypi.org/project/foldenv/)
+[![Python](https://img.shields.io/pypi/pyversions/foldenv.svg)](https://pypi.org/project/foldenv/)
+[![CI](https://github.com/cchin29/foldenv/actions/workflows/ci.yml/badge.svg)](https://github.com/cchin29/foldenv/actions/workflows/ci.yml)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
 **`foldenv`** computes a protein residue's **structural microenvironment** from its
 AlphaFold-predicted fold: **relative solvent accessibility (RSA)**, **secondary structure**
 (helix/strand/coil via DSSP), **spatial contacts / packing**, a **pLDDT** confidence flag,
@@ -18,27 +23,46 @@ get_structural_context("P04637", 175)   # TP53 R175
 #    "embedding_model": "ankh", "plddt": 96.6}
 ```
 
+The `embedding` field is the one part that needs a PLM extra (`[plm]`, or `[esmc]` for ESM C);
+every other field comes from the base install. Set `embedding.model = "none"` to skip it.
+
 Keywords: AlphaFold · relative solvent accessibility · RSA · secondary structure · DSSP ·
 residue contacts · contact map · pLDDT · residue microenvironment · protein language model ·
 per-residue embedding · structural bioinformatics · mutation effect featurization.
 
 ## Install
 
+Requires **Python 3.9+**; built and tested through **3.14**.
+
 ```bash
-pip install foldenv
-pip install "foldenv[saprot]"   # + mini3di, for SaProt's 3Di embeddings
+pip install foldenv                 # structural path only — no torch, no transformers
+pip install "foldenv[plm]"          # + torch, transformers, sentencepiece — PLM embeddings
+pip install "foldenv[saprot]"       # + mini3di for SaProt's 3Di half (implies [plm])
+pip install "foldenv[esmc]"         # + the EvolutionaryScale `esm` SDK — ESM C via `esmc_600m`
 ```
 
-`esmc_600m` additionally needs the EvolutionaryScale SDK (`pip install esm`), which conflicts
-with the pinned `transformers` and so belongs in its own environment.
+The base install is deliberately light — `numpy`, `requests`, `pyyaml`, `biopython` — and runs
+the whole structural pipeline (RSA, secondary structure, contacts, pLDDT) with
+`embedding.model = "none"`. Torch and transformers are multi-gigabyte wheels used only by the
+PLM path, so they live in the `[plm]` extra: requesting any other `embedding.model` without it
+raises an `ImportError` naming the extra rather than a bare `ModuleNotFoundError`.
+
+`[esmc]` does not imply `[plm]`: the `esm` SDK path (`esmc_600m`) never consults transformers.
+It does need torch, which `[esmc]` names directly. It is also the one extra with a narrower
+Python window than the package — `esm` publishes no release for 3.9 or for 3.13+, and its
+current releases require 3.12 exactly, so `[esmc]` resolves only on **3.10–3.12** (and only on
+3.12 does it get the current SDK).
 
 **External binary:** secondary structure + RSA need the **`mkdssp`** binary (DSSP v4).
 - macOS: `brew tap brewsci/bio && brew install brewsci/bio/dssp`
-- Debian/Ubuntu: `apt-get install dssp` (provides `mkdssp`)
+- Linux (recommended): `conda install -c conda-forge -c bioconda dssp` — no sudo, no build
+- Debian/Ubuntu: `apt-get install dssp` (provides `mkdssp`) — **verify it is v4**; apt has
+  historically shipped 2.x/3.x, which works but needs `dssp.executable` set to the real name
 
 Without it, the low-level contact and sequence helpers still work, but every documented entry
 point — `get_structural_context`, `structural_profile`, `tool.invoke`, `analysis.summarize`,
-`validation.crystal_crosscheck` — needs secondary structure and so fails. PLM weights download on first use (Ankh-large ~2 GB).
+`validation.crystal_crosscheck` — needs secondary structure and so fails. PLM weights
+download on first use (Ankh-large ~2 GB).
 
 ## Usage
 
@@ -54,7 +78,8 @@ tool.tool_spec("anthropic")   # tool descriptor: {name, description, input_schem
 ```
 
 **Direct Python API.** `get_structural_context` computes the embedding by **default** (loads
-the PLM). Pass `embedding.model="none"` for the structural fields only:
+the PLM, so it needs `[plm]`). Pass `embedding.model="none"` for the structural fields only —
+that path runs on the base install:
 
 ```python
 from foldenv import get_structural_context, config
@@ -102,11 +127,29 @@ Config is overridable per call via `config.load(overrides=...)`; all outputs are
 | `saprot_1.3b` | SaProt 1.3B | 1280 | structure-aware; deeper (not wider) than 650M |
 | `esm2_3b` | ESM2-3B | 2560 | sequence-only |
 | `esm2_650m` | ESM2-650M | 1280 | lighter sequence-only |
-| `esmc_600m` | ESM C 600M | 1152 | via the `esm` SDK |
-| `esmc_6b` | ESM C 6B | 2560 | best PLM; needs `transformers>=4.57` (separate env); never on Apple MPS |
+| `esmc_600m` | ESM C 600M | 1152 | via the `esm` SDK (`[esmc]` extra); transformers-independent |
+| `esmc_6b` | ESM C 6B | 2560 | transformers path loads on no measured release — use `esmc_600m`; cluster/Forge target; never on Apple MPS |
 
-The sequence models (Ankh, Ankh3×2, ProstT5, ESM2×2) are tested on `transformers` 4.27–4.45.
-Device is picked automatically (MPS → CUDA → CPU); ESM C is routed off MPS.
+**Transformers versions.** The `[plm]` extra pins `transformers>=4.27,<5`. The `>=4.27` floor is
+inherited; the sequence models (Ankh, Ankh3×2, ProstT5, ESM2×2) are measured across 4.44 to
+4.57.6. 5.x sets the ceiling: it fails to instantiate the prot_bert tokenizer, and the Ankh
+tokenizers there prepend an `<unk>` that `special_tokens_mask` does not flag — which shifts
+every residue's embedding by one for the plain Ankh checkpoints and changes the values (rows
+stay correct) for the Ankh3 pair. (`protbert` and `ankh_base` are loader-only checkpoints,
+reachable through `plm.load_pretrained_plm` but not selectable as `embedding.model`; the full
+per-checkpoint table is in `docs/SETUP_NOTES.md` §5.)
+
+Per-checkpoint requirements conflict inside that window — prot_bert and the unanchored Ankh
+checkpoints need `<5`, while ESM C 6B's transformers path loads on no measured release at all —
+so no single pin serves every caller and `foldenv.plm` checks each checkpoint's own window at
+load time, before any weight download. A checkpoint that cannot load raises; one that loads
+but produces values incomparable with another version warns. Ankh3 tokenization changes at
+4.50: rows stay correctly aligned either way, but embeddings computed before 4.50 are not
+numerically comparable with ones computed from 4.50 on, so the on-disk embedding cache is keyed
+by transformers `major.minor` and the two cannot collide.
+
+Device is picked automatically (MPS → CUDA → CPU); ESM C **6B** is routed off MPS
+(`esmc_600m` runs on MPS fine).
 
 ## Configuration (decisions)
 
@@ -119,7 +162,7 @@ overridable via `FOLDENV_CACHE_DIR` or the `cache.dir` config leaf.
 ## Tests
 
 ```bash
-pip install -e ".[dev,saprot]"
+pip install -e ".[dev,saprot]"   # saprot pulls [plm]
 pytest -q
 ```
 
@@ -129,11 +172,26 @@ forward-pass tests are opt-in (`RUN_HEAVY_EMB=1`). See
 inventory, and [`docs/SETUP_NOTES.md`](https://github.com/cchin29/foldenv/blob/main/docs/SETUP_NOTES.md)
 for environment setup and the RSA/secondary-structure validation notes.
 
+## Changelog
+
+Release history and upgrade notes are in
+[`CHANGELOG.md`](https://github.com/cchin29/foldenv/blob/main/CHANGELOG.md). **Upgrading from
+0.1.x:** `torch`/`transformers` moved out of the core install into `[plm]`, and cached
+embeddings on the transformers path are re-computed once — see the 0.2.0 entry.
+
+## Citing
+
+If `foldenv` contributes to work you publish, please cite it. GitHub's **Cite this repository**
+button renders BibTeX and APA from [`CITATION.cff`](https://github.com/cchin29/foldenv/blob/main/CITATION.cff),
+which also lists the upstream methods this package builds on (AlphaFold, DSSP, the MaxASA
+reference tables, and the PLM checkpoints) — cite those alongside it where the relevant field
+was used.
+
 ## Provenance & license
 
 `foldenv` was developed inside a private research fork of
-[MuLAN](https://github.com/GianLMB/mulan) and extracted here. Two helper modules (`constants.py`, `plm.py`) adapt small routines from
-MuLAN — see [`NOTICE`](https://github.com/cchin29/foldenv/blob/main/NOTICE). Licensed under
+[MuLAN](https://github.com/GianLMB/mulan) and extracted here. Two helper modules
+(`constants.py`, `plm.py`) adapt small routines from MuLAN — see [`NOTICE`](https://github.com/cchin29/foldenv/blob/main/NOTICE). Licensed under
 **CC BY-NC-SA 4.0** (see [`LICENSE`](https://github.com/cchin29/foldenv/blob/main/LICENSE)),
 the same license as MuLAN: free for attributed, non-commercial use; derivatives must share
 alike.
