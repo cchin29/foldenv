@@ -13,6 +13,7 @@ not a standalone functional-site classifier.
 from __future__ import annotations
 
 import bisect
+import dataclasses
 from dataclasses import dataclass
 
 from . import config as _config
@@ -54,6 +55,25 @@ class SiteStat:
     contact_percentile: float       # fraction of residues with ≤ this many contacts
     buried: bool                    # rsa < config buried_threshold
 
+    def to_dict(self) -> dict:
+        """This stat as a strict-JSON-safe dict (non-finite floats → `None`)."""
+        return {f.name: _json_safe(getattr(self, f.name)) for f in dataclasses.fields(self)}
+
+
+def _json_safe(value):
+    """A dataclass field as strict JSON: non-finite floats become `None`.
+
+    `json.dumps` writes a bare `NaN` token by default, which is not valid JSON and which many
+    parsers reject; `allow_nan=False` turns the same value into an exception instead. Neither is
+    a useful thing to hand a caller, so "undefined" is represented the way the rest of this
+    package represents it -- as `null`.
+    """
+    if isinstance(value, float) and value != value:      # NaN
+        return None
+    if isinstance(value, float) and value in (float("inf"), float("-inf")):
+        return None
+    return value
+
 
 def _percentile(sorted_vals: list, v) -> float:
     """Fraction of values ≤ v (0..1); ties inclusive (bisect_right)."""
@@ -85,7 +105,8 @@ def functional_site_stats(
         p = profile[pos]
         # Self-check the numbering mapping: the residue in the structure must match the
         # expected identity. Guards against a wrong Ambler→UniProt offset silently reporting
-        # a neighboring residue (the central M7 risk). Pass expect="" / "X" to skip.
+        # a neighboring residue -- the main failure mode this guard exists for. Pass
+        # expect="" / "X" to skip.
         if expect and expect not in ("X", "?") and p["aa"] != expect:
             raise ValueError(
                 f"{uniprot_id} site {pos}: expected {expect} but structure has {p['aa']} — "
@@ -117,7 +138,10 @@ def summarize(uniprot_id: str, cfg: dict | None = None) -> dict:
         "n_buried": n_buried,
         "all_buried": n_buried == len(stats),
         # mean over sites that actually have a DSSP RSA (don't fold None → 0.0)
-        "mean_rsa": (sum(present_rsa) / len(present_rsa)) if present_rsa else float("nan"),
-        "mean_contact_percentile": sum(s.contact_percentile for s in stats) / len(stats),
+        # `_json_safe`, because this dict is what a caller serialises: `mean_rsa` is undefined
+        # when no site has an RSA, and `_percentile` returns NaN on an empty ranking -- either
+        # would make `json.dumps` emit a bare `NaN`, which is not valid JSON.
+        "mean_rsa": _json_safe((sum(present_rsa) / len(present_rsa)) if present_rsa else float("nan")),
+        "mean_contact_percentile": _json_safe(sum(s.contact_percentile for s in stats) / len(stats)),
         "sites": stats,
     }

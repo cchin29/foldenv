@@ -51,7 +51,8 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from .dssp import ResidueDSSP
+from .dssp import SS8_TO_SS3, ResidueDSSP
+from .fetch import _check_identifier
 
 # Bump when the *stored values* of an artifact can change: the on-disk schema, OR the
 # computation that produces them — `run_dssp` / MaxASA tables (dssp.py) for DSSP, or
@@ -93,6 +94,15 @@ def _root(cfg: dict) -> Path:
 
 # --- DSSP (M2) -------------------------------------------------------------------------
 
+def _safe_tag(value: str) -> str:
+    """A config value reduced to what is safe in a filename.
+
+    Same treatment `_dssp_exe_tag` gives the executable. Applied to `max_asa_table` because it
+    sits in the same generated path and is equally caller-supplied.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "_", str(value))
+
+
 def _dssp_exe_tag(cfg: dict) -> str:
     """Filename-safe tag for the configured mkdssp executable (basename). Keyed so the
     disk cache matches context.py's in-memory key, which also includes the executable —
@@ -103,13 +113,28 @@ def _dssp_exe_tag(cfg: dict) -> str:
 
 
 def _dssp_path(cfg: dict, accession: str) -> Path:
-    table = cfg["rsa"]["max_asa_table"]
+    # First statement, before `_structure_fingerprint` below stats a path built from it:
+    # `context.get_dssp` consults this cache *before* it reaches `fetch_structure`, so a guard
+    # living only in `fetch` never runs for it. `max_asa_table` gets the same filename
+    # sanitising `_dssp_exe_tag` gives the executable -- both are caller-supplied config.
+    accession = _check_identifier(accession, "accession")
+    table = _safe_tag(cfg["rsa"]["max_asa_table"])
     exe = _dssp_exe_tag(cfg)
     # DSSP is coordinate-derived → include the structure fingerprint so a re-fetched /
     # re-released mmCIF invalidates the stale RSA/SS (same defence as structure-aware
     # embeddings; "0" when absent leaves the key stable, e.g. for non-AF structures).
     fp = _structure_fingerprint(cfg, accession)
+    # Checked here, not at the callers: `context.get_dssp` consults this cache *before* it
+    # reaches `fetch_structure`, so a guard that lives only in `fetch` never runs for it.
+    # `max_asa_table` is sanitised the way `_dssp_exe_tag` sanitises the executable -- both are
+    # caller-supplied config that lands in a filename.
     return _root(cfg) / "dssp" / f"{accession}__{table}__{exe}__s{fp}__v{_DSSP_FORMAT}.json"
+
+
+#: The three-state alphabet `run_dssp` reduces to. `ss8` is checked for shape instead, because
+#: `run_dssp` stores an unrecognised DSSP code verbatim and reduces it to "C".
+_SS3_VALUES = frozenset("HEC")
+_SS8_VALUES = frozenset(SS8_TO_SS3)
 
 
 def load_dssp(cfg: dict, accession: str) -> dict[int, ResidueDSSP] | None:
@@ -128,13 +153,33 @@ def load_dssp(cfg: dict, accession: str) -> dict[int, ResidueDSSP] | None:
         for resnum_str, r in blob["residues"].items():
             resnum = int(resnum_str)
             rsa = r["rsa"]
+            # Validate on read. A cache file is not trusted input: it can be truncated, written
+            # by an older format, or -- since the cache directory is CWD-relative by default --
+            # edited by anyone who can write there. Values from here flow straight out through
+            # `tool.invoke` to an LLM caller, and `OUTPUT_SCHEMA` promises `rsa` in [0, 1] and a
+            # three-letter `ss3`, so a bad file must read as a miss rather than as an answer.
+            # `ss8` is checked for shape, not membership: `run_dssp` maps an unrecognised DSSP
+            # code to "C" via `SS8_TO_SS3.get(ss8, "C")` and stores the raw code, which
+            # `dssp.py` documents as supported. Rejecting it here would refuse a record this
+            # package legitimately writes, and the file would miss forever.
+            if not isinstance(r["ss8"], str) or len(r["ss8"]) != 1:
+                return None
+            if r["ss3"] != SS8_TO_SS3.get(r["ss8"], "C"):
+                return None
+            if not isinstance(r["aa"], str) or len(r["aa"]) != 1:
+                return None
+            if not isinstance(r["acc"], (int, float)) or isinstance(r["acc"], bool):
+                return None
+            if rsa is not None and not (isinstance(rsa, (int, float))
+                                        and not isinstance(rsa, bool) and 0.0 <= rsa <= 1.0):
+                return None
             result[resnum] = ResidueDSSP(
                 resnum=resnum,
                 aa=r["aa"],
                 ss3=r["ss3"],
                 ss8=r["ss8"],
                 acc=r["acc"],
-                rsa=float("nan") if rsa is None else rsa,  # None ↔ NaN (strict JSON)
+                rsa=float("nan") if rsa is None else float(rsa),  # None ↔ NaN (strict JSON)
             )
         return result
     except (OSError, ValueError, KeyError):
@@ -215,6 +260,7 @@ def _transformers_tag() -> str:
 
 
 def _emb_path(cfg: dict, accession: str, model_name: str) -> Path:
+    accession = _check_identifier(accession, "accession")   # before any path is built from it
     # Two optional key components, each added only where it can actually change the tensor:
     #   `t<major.minor>` — the transformers version that tokenized it (see the module docstring);
     #     omitted for `esm`-SDK models, which never go through transformers.
@@ -238,6 +284,24 @@ def _emb_path(cfg: dict, accession: str, model_name: str) -> Path:
     return _root(cfg) / "embeddings" / ("__".join(parts) + ".pt")
 
 
+#: The first four bytes of a PKZIP local file header. `torch.save` has written this container
+#: since torch 1.6; the older `.tar` container is what CVE-2025-32434 bypasses `weights_only` on.
+_ZIP_MAGIC = b"PK\x03\x04"
+
+
+def _is_zip_pt(fh) -> bool:
+    """Whether an open binary file starts with the zip magic `torch.save` writes.
+
+    Deliberately not `torch.serialization._is_zipfile`: that is private, has moved between
+    releases, and this is a four-byte check. Reads and rewinds, so the caller's handle is unmoved.
+    """
+    pos = fh.tell()
+    try:
+        return fh.read(4) == _ZIP_MAGIC
+    finally:
+        fh.seek(pos)
+
+
 def load_embedding(cfg: dict, accession: str, model_name: str):
     """Return the cached `[L, dim]` CPU tensor for (accession, model), or None on miss.
 
@@ -254,12 +318,29 @@ def load_embedding(cfg: dict, accession: str, model_name: str):
     torch = _import_torch()
 
     try:
-        try:
-            return torch.load(path, map_location="cpu", weights_only=True)
-        except TypeError:  # older torch has no weights_only kwarg
-            return torch.load(path, map_location="cpu")
+        # Refuse anything that is not a modern zip-format .pt, before torch.load sees it.
+        #
+        # `save_embedding` writes with plain `torch.save`, which has produced the zip format
+        # since torch 1.6 -- so a legacy `.tar` file here was not written by this package. The
+        # distinction matters: on torch <=2.5, `torch.load(..., weights_only=True)` does not
+        # constrain the legacy tar path at all (CVE-2025-32434), so `weights_only` silently
+        # stops being a defence for exactly the file shape we never emit. Later torch restricts
+        # the legacy path properly, so this is belt-and-braces there -- but checking the container
+        # closes it on every version rather than only for callers who have upgraded, which is why
+        # this package does not pin a torch floor for it.
+        with open(path, "rb") as fh:
+            if not _is_zip_pt(fh):
+                return None
+
+        # `weights_only=True` always, with no fallback. The kwarg has existed since torch 1.13 and
+        # the declared floor is 2.0, so a fallback for "older torch has no weights_only" guards a
+        # case that cannot arise -- while turning a `TypeError` raised *inside* restricted
+        # unpickling into a second, unrestricted load of the same bytes. On torch 2.0-2.5, where
+        # the bare default is still `weights_only=False`, that second load executes whatever the
+        # file contains. A cache file is untrusted input; there is nothing to fall back to.
+        return torch.load(path, map_location="cpu", weights_only=True)
     except Exception:
-        # Corrupt / truncated .pt → miss and recompute.
+        # Corrupt / truncated / not-a-tensor .pt → miss and recompute.
         return None
 
 

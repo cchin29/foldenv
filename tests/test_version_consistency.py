@@ -124,6 +124,54 @@ def test_citation_release_date_is_iso():
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _cff_scalar(_CITATION, "date-released"))
 
 
+def test_citation_release_date_matches_its_changelog_entry():
+    """`date-released` names the day the changelog says this version shipped.
+
+    The shape check above passes on any well-formed date, including the *previous* release's --
+    which is exactly what a bump that edits three version strings and forgets the fourth leaves
+    behind. Tied to the changelog rather than to a literal so it does not rot.
+    """
+    version = _cff_scalar(_CITATION, "version")
+    headings = dict(re.findall(r"^## \[(\d+\.\d+\.\d+)\][^\d]+(\d{4}-\d{2}-\d{2})",
+                               _CHANGELOG.read_text(), re.M))
+    assert version in headings, f"CHANGELOG has no dated entry for {version}"
+    assert _cff_scalar(_CITATION, "date-released") == headings[version], (
+        f"CITATION.cff date-released is {_cff_scalar(_CITATION, 'date-released')}, but the "
+        f"changelog dates {version} to {headings[version]}")
+
+
+def test_citation_is_valid_yaml_with_no_duplicate_keys():
+    """CITATION.cff parses, and no mapping defines a key twice.
+
+    The other tests here read this file line-wise on purpose, so nothing in the suite ever
+    parsed it. A reference block pasted in the middle of another one is still valid to a
+    last-wins parser: it silently reassigns the enclosing entry's fields and drops its own, so a
+    journal name or a licence-attribution note can end up attached to the wrong paper.
+    Duplicate keys are what that looks like from the outside, and stricter CFF validators
+    reject them outright, so this fails on the duplicate rather than on the symptom.
+    """
+    yaml = pytest.importorskip("yaml", reason="PyYAML not installed")
+
+    class _Strict(yaml.SafeLoader):
+        pass
+
+    def _no_duplicates(loader, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise AssertionError(f"CITATION.cff defines {key!r} twice in one mapping, "
+                                     f"at line {key_node.start_mark.line + 1}")
+            seen.add(key)
+        return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+    _Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicates)
+    data = yaml.load(_CITATION.read_text(), _Strict)
+    assert data["version"] == _cff_scalar(_CITATION, "version")
+    for ref in data.get("references", []):
+        assert ref.get("authors"), f"reference with no authors: {ref.get('title')!r}"
+
+
 def _declared_python_minors(project: dict) -> set:
     """The `3.x` minors claimed by the `Programming Language :: Python :: 3.x` classifiers."""
     return {
@@ -191,8 +239,8 @@ def test_python_classifiers_have_no_gaps():
 def test_ci_matrix_matches_classifiers():
     """Every advertised Python is actually built, and nothing is built that is not advertised.
 
-    A version this package claims to support but never runs on is a claim nothing checks — the
-    exact gap that let the matrix skip 3.10 while the metadata advertised it. Reads the matrix
+    A version this package claims to support but never runs on is a claim nothing checks: the
+    metadata can advertise an interpreter the matrix never builds. Reads the matrix
     rather than restating it, so adding a version means editing one list and not two.
     """
     if not _imported_from_repo():

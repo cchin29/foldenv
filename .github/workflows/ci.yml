@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# This workflow only reads the repository and runs tests, so it needs nothing else. Declared
+# explicitly rather than inherited: without a block the jobs get whatever the repository default
+# is, which on an older repository is still read-and-write, and the `push` leg would then run
+# repository code holding a token that can write to it.
+permissions:
+  contents: read
+
 jobs:
   test:
     # The OS is in the name because two legs share a Python version -- without it they are

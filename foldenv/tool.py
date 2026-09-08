@@ -43,7 +43,13 @@ INPUT_SCHEMA: dict[str, Any] = {
         "uniprot_id": {
             "type": "string",
             "description": "UniProt accession (canonical), e.g. 'P62593'.",
-            "pattern": "^[A-Za-z0-9]+(-[0-9]+)?$",
+            # Bounded, not just anchored: an unbounded `+` let a multi-megabyte string through
+            # the regex and into a filesystem path, where it surfaced as a raw OSError that
+            # leaked the cache location. Real UniProtKB accessions are 6 or 10 characters plus an
+            # optional `-N` isoform suffix; the bound is deliberately looser than that, because
+            # its job is to stop absurd input reaching the filesystem, not to validate the
+            # accession -- AlphaFold-DB is what decides whether an id exists.
+            "pattern": "^[A-Za-z0-9]{1,12}(-[0-9]{1,3})?$",
         },
         "position": {
             "type": "integer",
@@ -152,11 +158,24 @@ def invoke(arguments: dict | str) -> dict[str, Any]:
     """Framework-neutral dispatch: JSON string or dict of arguments → result dict.
 
     Validates required args + types (so a framework gets a clear error, not a deep stack).
+
+    Every rejection is a `ValueError` or a `TypeError`, including malformed JSON: `json.loads`
+    raises `RecursionError` on deeply nested input, which is neither, and would escape a caller
+    catching the two documented types.
     """
     if isinstance(arguments, str):
-        arguments = json.loads(arguments)
+        try:
+            arguments = json.loads(arguments)
+        except RecursionError as exc:                 # nesting depth, not a value error
+            raise ValueError("arguments JSON is nested too deeply to parse") from exc
     if not isinstance(arguments, dict):
         raise TypeError("arguments must be a JSON object / dict")
+
+    # The published schema says `additionalProperties: false`; enforce it rather than advertising
+    # a constraint the dispatcher does not apply.
+    unknown = sorted(set(arguments) - set(INPUT_SCHEMA["properties"]))
+    if unknown:
+        raise ValueError(f"unknown argument(s): {', '.join(unknown)}")
 
     missing = [k for k in ("uniprot_id", "position") if k not in arguments]
     if missing:
@@ -165,7 +184,7 @@ def invoke(arguments: dict | str) -> dict[str, Any]:
     position = arguments["position"]
     if not isinstance(uniprot_id, str):
         raise TypeError("uniprot_id must be a string")
-    if not _ACCESSION_RE.match(uniprot_id):
+    if not _ACCESSION_RE.fullmatch(uniprot_id):
         raise ValueError(f"uniprot_id {uniprot_id!r} is not a valid UniProt accession")
     if not isinstance(position, int) or isinstance(position, bool):
         raise TypeError("position must be an integer")

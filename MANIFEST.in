@@ -9,3 +9,10 @@ include NOTICE
 include tests/__init__.py
 include tests/TESTS.md
 recursive-include docs *.md
+# The decision notebooks are the evidence behind the defaults in decisions.yaml, which is
+# exactly what "audit the release" means for this package. Non-recursive on purpose:
+# notebooks/ also holds a gitignored on-disk cache and, once either notebook has been opened
+# in Jupyter, a .ipynb_checkpoints/ copy -- and an sdist is built from the working tree, not
+# from git, so `recursive-include ... *.ipynb` would ship a stale checkpoint of the notebook
+# beside the real one.
+include notebooks/*.ipynb

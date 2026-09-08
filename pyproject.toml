@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "foldenv"
-version = "0.2.0"
+version = "0.3.0"
 description = "Per-residue structural context (microenvironment) from AlphaFold: relative solvent accessibility (RSA), secondary structure, contacts, pLDDT, and per-residue protein-language-model embeddings."
 readme = "README.md"
 # Floor only, deliberately. An upper bound here is a resolver gate, not documentation: on a
@@ -72,18 +72,19 @@ dependencies = [
 # makes the Ankh tokenizers emit an unflagged <unk> that misaligns every residue for the two
 # checkpoints without a residue-count anchor, hence the ceiling.
 # `sentencepiece` is not optional: without it the T5/Ankh tokenizers behind ProstT5,
-# prot_t5_xl_half and the Ankh3 pair raise on load, so an extra without it cannot serve the
+# prott5_xl_half and the Ankh3 pair raise on load, so an extra without it cannot serve the
 # models this package documents.
 plm = ["torch>=2.0", "transformers>=4.27,<5", "sentencepiece"]
 # SaProt's structure-aware 3Di half is computed from the AlphaFold backbone via mini3di.
 saprot = ["mini3di", "foldenv[plm]"]
 # ESM C via the `esm` SDK. The SDK does not go through transformers, but foldenv's own device
 # handling imports torch, so name it here rather than relying on `esm` pulling it transitively.
-# NOTE: this is the one extra with a narrower Python window than the package. `esm` >=3.2.2
-# requires ==3.12; the newest release supporting anything older is 3.2.1.post1 (>=3.10), and no
-# release supports 3.9 or >=3.13 at all. So `pip install "foldenv[esmc]"` resolves only on
-# 3.10-3.12, and only on 3.12 does it get the current SDK. Deliberately left unmarked: an
-# environment marker would silently install an extra that cannot work rather than failing.
+# NOTE: this extra's Python window is set by `esm`, not by this package, and it moves. As of
+# 2026-09: no release supports 3.9, so the extra does not resolve there; 3.2.1.post1 (>=3.10) is
+# the newest supporting 3.10-3.11; 3.2.2 and 3.2.3 pinned ==3.12; and 3.4.0 requires >=3.12 with
+# no upper bound, so 3.13+ now resolve to it -- on interpreters this package has not measured
+# the SDK against. Deliberately left unmarked: an environment marker would silently install an
+# extra that cannot work rather than failing, and would need editing every time `esm` moves.
 esmc = ["esm", "torch>=2.0"]
 # `tomli` only below 3.11, where `tomllib` is not yet stdlib: without it the packaging tests
 # degrade to skips on the 3.9/3.10 CI legs, which is a green run that checked nothing.

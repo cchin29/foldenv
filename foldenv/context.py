@@ -154,7 +154,7 @@ def _protein_embedding(uniprot_id: str, cfg: dict):
 
     seq = get_sequence(uniprot_id, cfg)  # cheap (cached); also the length-guard reference
 
-    # L2 disk cache: a hit skips both the forward pass AND loading ~2 GB of
+    # L2 disk cache: a hit skips both the forward pass AND loading ~7.5 GB of
     # PLM weights, so it must be checked before touching the embedder.
     per_res = persist.load_embedding(cfg, uniprot_id, model_name)
     from_disk = per_res is not None
@@ -196,8 +196,8 @@ def structural_profile(uniprot_id: str, cfg: dict | None = None) -> dict[int, di
     """Per-residue structural fields for the whole protein (embedding-free), cheap.
 
     Returns {position: {aa, rsa, ss3, contact_count, plddt}}. Reuses the cached DSSP + contact
-    KD-tree, so it's one pass over positions with no re-fetch/re-DSSP. Handy for M7 analysis and
-    for an agent that wants a protein-wide burial/packing map.
+    KD-tree, so it's one pass over positions with no re-fetch/re-DSSP. Handy for whole-protein
+    analysis and for an agent that wants a protein-wide burial/packing map.
     """
     cfg = cfg or _config.load()
     seq = get_sequence(uniprot_id, cfg)
@@ -262,8 +262,8 @@ def get_structural_context(
         embedding (per-residue PLM vector as a list, or None if embedding.model == "none"),
         embedding_model (name, or None), plddt (0–100, or None).
 
-    All fields are native-Python / strict-JSON-safe. The embedding field is model-agnostic
-    (default Ankh, not ProstT5). Raises IndexError if `position` is outside 1..len(sequence).
+    All fields are native-Python / strict-JSON-safe. The embedding field is model-agnostic: its
+    length follows whichever model `embedding.model` names. Raises IndexError if `position` is outside 1..len(sequence).
     A position that exists in the sequence but not in the structure (an 'X' gap-fill) degrades
     to null structural fields rather than raising.
     """

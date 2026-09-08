@@ -135,9 +135,11 @@ _TRANSFORMERS_CONSTRAINTS: Dict[str, Tuple[_TfConstraint, ...]] = {
     "esmc_6b": (
         _TfConstraint(
             None, None, True,
-            "no measured transformers release (4.44, 4.57.6, 5.15.1) registers the `esmc` "
-            "model_type, so this checkpoint's transformers path does not load on any of them; "
-            'use `esmc_600m` through the `esm` SDK instead (pip install "foldenv[esmc]")',
+            "no transformers version fixes this -- the HF `esmc` model_type is in no released "
+            "transformers, and the `esm` SDK registry omits the 6B. Loading the 6B means "
+            "hand-building the module and reading its safetensors shards directly, which this "
+            "package does not do. Use `esmc_600m` through the `esm` SDK instead "
+            '(pip install "foldenv[esmc]")',
             always=True,
         ),
     ),
@@ -220,10 +222,11 @@ def check_transformers_version(model_name: str) -> None:
             continue
         if c.always:
             # No version satisfies this one, so there is no specifier to quote and no pip line
-            # that would help; `why` carries the alternative instead.
+            # that would help; `why` carries the alternative instead. The installed version is
+            # deliberately NOT named here -- quoting it invites the reader to go looking for a
+            # release that works, and for an `always` constraint there is not one.
             raise ImportError(
-                f"PLM {model_name!r} ({model_id}) has no working transformers path on "
-                f"transformers {raw}: {c.why}."
+                f"PLM {model_name!r} ({model_id}) has no working path in foldenv: {c.why}."
             )
         spec = _fmt_bounds(c)
         msg = (

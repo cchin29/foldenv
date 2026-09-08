@@ -44,7 +44,8 @@ SS8_TO_SS3 = {
 
 # --- MaxASA reference tables (Å²), keyed by 1-letter AA -------------------------------
 # Tien et al. 2013, PLoS ONE 8(11):e80635, Table 1 (theoretical & empirical); Rost & Sander
-# 1994, Proteins 20:216-226. Record which was used — absolute RSA shifts ~0.05–0.1 between
+# 1994, Proteins 20:216-226. Record which was used — mean |ΔRSA| is 0.012 vs Tien-empirical
+# and 0.047 vs Rost & Sander, the latter moving 17% of residues past 0.10 —
 # tables. (The `sander_rost1994` key inverts that paper's author order; kept as-is because
 # renaming it would break existing configs. Full citations in CITATION.cff.)
 
@@ -80,15 +81,44 @@ class ResidueDSSP:
     rsa: float           # acc / MaxASA(aa), clamped to [0, 1]
 
 
+#: Seconds to wait for `mkdssp --version`. The real probe answers instantly; this exists so a
+#: wedged binary fails fast instead of hanging the caller.
+_VERSION_PROBE_TIMEOUT = 30
+
+
 def _detect_version(exe: str) -> str:
-    """Parse `mkdssp --version` → semantic version string (default 4.x if unparseable)."""
+    """Parse `mkdssp --version` → semantic version string (default 4.x if unparseable).
+
+    Raises FileNotFoundError, via `_missing_dssp_error`, when the executable cannot be
+    launched at all -- a different condition from an unparseable banner, and the one case
+    where "assume 4.x and carry on" would produce a misleading downstream failure."""
     try:
-        out = subprocess.check_output([exe, "--version"], text=True, stderr=subprocess.STDOUT)
+        # `timeout` and a closed stdin, because this preflight runs before every uncached
+        # `run_dssp`: a binary that hangs or waits on input would otherwise block the caller
+        # forever with no error, which is indistinguishable from slow work from the outside.
+        out = subprocess.check_output([exe, "--version"], text=True, stderr=subprocess.STDOUT,
+                                      timeout=_VERSION_PROBE_TIMEOUT,
+                                      stdin=subprocess.DEVNULL)
         m = re.search(r"(\d+\.\d+\.\d+)", out) or re.search(r"(\d+\.\d+)", out)
         if m:
             v = m.group(1)
             return v if v.count(".") == 2 else v + ".0"
-    except (OSError, subprocess.SubprocessError):
+    except OSError as exc:
+        # Not a parse failure -- the binary could not be launched at all. `OSError` rather than
+        # the two obvious subclasses, because there are more than two: ENOENT for an absent
+        # binary or a missing interpreter behind a shebang, EACCES for a file that is present
+        # but not executable and for a directory, ENOTDIR for a path leading *through* a regular
+        # file (a plausible typo in the `dssp.executable` leaf this error tells the reader to
+        # edit), and ENOEXEC for a present, executable binary of the wrong architecture -- an
+        # x86_64 build on an arm64 machine, which raises plain `OSError`. Every one of them would
+        # otherwise fall to the handler below and warn that a version banner could not be parsed,
+        # sending the reader after output that was never produced. Chained rather than
+        # suppressed, so a caller that wants errno/filename can reach the original via __cause__.
+        raise _missing_dssp_error(exe) from exc
+    except subprocess.SubprocessError:
+        # The binary launched and misbehaved: a non-zero exit (`CalledProcessError`) or a probe
+        # that outran its timeout (`TimeoutExpired`). Either way it is an unparseable banner
+        # rather than a missing tool, so it belongs with the warning below.
         pass
     # assume modern mkdssp; Biopython then passes --output-format=dssp. Warn, because a
     # real mkdssp 3.x whose banner didn't parse would be driven with a v4-only flag.
@@ -98,6 +128,35 @@ def _detect_version(exe: str) -> str:
         RuntimeWarning, stacklevel=2,
     )
     return "4.0.0"
+
+
+def _missing_dssp_error(exe: str) -> FileNotFoundError:
+    """The actionable error for an absent DSSP binary.
+
+    DSSP is an external program, not a Python package, so it cannot be an extra and pip
+    cannot supply it -- which is why this says how to install it rather than naming one.
+    Without it Biopython raises a bare FileNotFoundError from inside its own call stack,
+    which says neither what needs the binary, nor what still works, nor where to get it --
+    and names it wrongly whenever `dssp.executable` is set, since Biopython retries under its
+    own hardcoded `mkdssp` when the configured executable is not found.
+    """
+    return FileNotFoundError(
+        f"foldenv needs the {exe!r} binary (DSSP; v4 preferred, 2.x/3.x work) for secondary "
+        f"structure and RSA, and it "
+        f"could not be launched. It may be absent from PATH, present but not executable, a "
+        f"script whose interpreter is missing, or a binary built for another architecture. "
+        f"It is an external program, not a Python "
+        f"package, so pip cannot install it:\n"
+        f"  macOS        brew tap brewsci/bio && brew install brewsci/bio/dssp\n"
+        f"  Linux/conda  conda install -c conda-forge -c bioconda dssp\n"
+        f"  Debian       apt-get install dssp   (provides mkdssp; 2.x/3.x work too)\n"
+        f"Set the D6 config leaf `dssp.executable` if it is installed under another name.\n"
+        f"Everything that reports secondary structure or RSA needs it: "
+        f"`get_dssp`, `get_structural_context`, `structural_profile`, `tool.invoke`/`tool.call`, "
+        f"`analysis.summarize`/`analysis.functional_site_stats` and "
+        f"`validation.crystal_crosscheck` all resolve those first. `get_structure`, "
+        f"`get_sequence`, `get_contacts`, `fetch_structure` and `clear_cache` do not."
+    )
 
 
 def max_asa(aa: str, table: str) -> float | None:
@@ -130,6 +189,14 @@ def run_dssp(
         )
     from Bio.PDB.DSSP import dssp_dict_from_pdb_file
 
+    # `_detect_version` is the single guard: it launches the binary before Biopython does and
+    # turns an OS-level launch failure into `_missing_dssp_error`. Without it Biopython raises a
+    # bare FileNotFoundError three frames below the caller and attributed to Bio/PDB/DSSP.py --
+    # which reads as a Biopython bug rather than a missing external tool. Worse, the name it
+    # reports is Biopython's hardcoded `mkdssp` rather than the configured one, because it
+    # retries under that name when the configured executable is not found. A `which()` preflight
+    # here would be redundant with the launch this makes anyway, and could not be exercised
+    # separately from it.
     version = _detect_version(exe)
     dssp_dict, keys = dssp_dict_from_pdb_file(str(cif_path), DSSP=exe, dssp_version=version)
 

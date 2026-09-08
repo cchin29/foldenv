@@ -53,3 +53,27 @@ def test_crosscheck_numbering_alignment_not_identity():
     # If it wrongly assumed exp_resnum == af_pos, agreement would collapse.
     rep = validation.crystal_crosscheck("P62593", "1BTL")
     assert rep.ss3_agreement > 0.85 and rep.rsa_pearson > 0.85
+
+
+def test_crosscheck_report_to_dict_is_strict_json():
+    """`to_dict` survives `allow_nan=False`, including the under-two-residues NaN case.
+
+    Pure: builds the report directly rather than running the cross-check, because what is being
+    pinned is the serialisation contract, not the measurement. `json.dumps` writes a bare `NaN`
+    token by default -- invalid JSON that many parsers reject -- so a report that reaches an
+    agent framework has to carry `null` instead.
+    """
+    import json
+
+    r = validation.CrosscheckReport(
+        uniprot_id="P62593", pdb_id="1BTL", chain_id="A",
+        n_compared=263, ss3_agreement=0.996, rsa_pearson=0.984, rsa_mae=0.027,
+    )
+    assert json.loads(json.dumps(r.to_dict(), allow_nan=False))["n_compared"] == 263
+
+    nan = validation.CrosscheckReport(
+        uniprot_id="P62593", pdb_id="1BTL", chain_id="A",
+        n_compared=1, ss3_agreement=0.0, rsa_pearson=float("nan"), rsa_mae=float("nan"),
+    )
+    out = json.loads(json.dumps(nan.to_dict(), allow_nan=False))
+    assert out["rsa_pearson"] is None and out["rsa_mae"] is None

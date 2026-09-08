@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      # Naming any scope sets every unnamed one to no access, so `contents: read` is not
+      # redundant -- without it `actions/checkout` has no permission to read this repository.
+      # It happens to work on a public repository; it would stop working if this one went private.
+      contents: read
       id-token: write        # required for Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@v5
@@ -63,4 +67,10 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # Pinned to a commit, not to `release/v1`, which is a *branch* whose tip moves. This is
+        # the one third-party action that runs while the job holds `id-token: write` for the
+        # `pypi` environment, so whoever controls this ref can mint an OIDC token and publish
+        # under this project's name. A branch ref delegates that standing; a SHA does not.
+        # dc37677 is the tip of release/v1 as of 2026-09-08, which is tag v1.14.2.
+        # Updating means re-resolving the tag to its commit deliberately, which is the point.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33

@@ -1,8 +1,7 @@
 foldenv — NOTICE
 ================
 
-`foldenv` was developed inside a private research fork of the MuLAN codebase and extracted
-into a standalone project. Most of the code (structure fetch/parse, DSSP/RSA, contacts,
+`foldenv` was developed alongside the MuLAN codebase and extracted into a standalone project. Most of the code (structure fetch/parse, DSSP/RSA, contacts,
 context assembly, disk persistence, validation, analysis, and the tool wrapper) is original
 work by Connor Chin.
 
@@ -20,7 +19,7 @@ licensed CC BY-NC-SA 4.0):
 
   * foldenv/plm.py — `get_available_plms`, `load_pretrained_plm`, and `embed_sequence`
     (per-residue forward pass with per-model prefix/slicing handling), adapted from
-    `mulan.utils`. `get_device` is not from MuLAN; it originates in this line of work.
+    `mulan.utils`. `get_device` is not from MuLAN; it is original to foldenv.
 
 License
 -------

@@ -7,8 +7,11 @@ Environment setup and the implementation gotchas worth knowing before running th
 ## 1. Python & venv
 
 - **`requires-python` is `>=3.9` with no upper bound**, and the tested range is 3.9 through
-  3.14 — every one of those built by the CI matrix, with the full suite green on 3.14 under
-  torch 2.13 and transformers 4.57.6. The floor is enforced; the ceiling is deliberately not,
+  3.14 — every one of those built by the CI matrix. CI runs the *offline* suite: it installs no
+  `mkdssp`, points `FOLDENV_ALPHAFOLD_API_BASE` at a dead port so the network-gated tests
+  self-skip, and leaves `RUN_HEAVY_EMB` off. The full suite, live tests included, is green on 3.14
+  under torch 2.13 and transformers 4.57.6 when run locally with `mkdssp` present. The floor is
+  enforced; the ceiling is deliberately not,
   because a `requires-python` cap is a resolver gate rather than documentation: above it pip
   backtracks through the release history instead of saying the interpreter is too new. A
   newer Python than the matrix covers is therefore untested, not blocked.
@@ -19,9 +22,11 @@ Environment setup and the implementation gotchas worth knowing before running th
   diagnosing a partial install.
   - This only bites environments that install `[plm]`/`[saprot]`. The base install is pure
     Python plus `numpy`/`biopython`, which have wheels far ahead of the PLM stack.
-  - **`[esmc]` is the one extra narrower than the package.** `esm` publishes nothing for 3.9 or
-    3.13+, and its current releases require 3.12 exactly, so `[esmc]` resolves only on
-    3.10–3.12. On 3.10/3.11 pip silently backtracks to the older `esm 3.2.1.post1`.
+  - **`[esmc]`'s Python window is set by `esm`, not by this package, and it moves.** As of
+    2026-09: nothing is published for 3.9, so the extra does not resolve there; 3.10 and 3.11
+    backtrack to `esm 3.2.1.post1`, the newest release supporting them; 3.12 and above get the
+    current `esm 3.4.0`, which declares no upper bound — so 3.13 and 3.14 resolve too, on
+    interpreters this package has not measured the SDK against.
 - **Obtaining a specific interpreter** when the system one does not suit: pyenv
   (`pyenv install 3.12`), conda (`conda create -n foldenv python=3.12`), a distribution build
   (Homebrew or MacPorts `python@3.12`), or a cluster module system (`module load python/3.12`).
@@ -36,7 +41,6 @@ Environment setup and the implementation gotchas worth knowing before running th
   ```
   A bare `pip install -e .` installs the structural stack only; the PLM tests then need
   `[plm]` (or `[saprot]`, which implies it). See §2.
-- `.venv/` is gitignored (added to `.gitignore`).
 
 ## 2. Dependencies
 
@@ -57,7 +61,7 @@ regression.
 | biopython | core | 1.87 | floor **`>=1.80`**, where the DSSP v4 auto-handling landed — see §3. Below it, `run_dssp` is a `TypeError` |
 | torch | `[plm]`, `[esmc]` | 2.12.1 | `>=2.0`; CPU/MPS on Mac; on a CUDA node install the build matching it |
 | transformers | `[plm]` | 4.44.2 | pinned **`>=4.27,<5`**; measured 4.44–4.57.6, `>=4.27` floor inherited — see §5 |
-| sentencepiece | `[plm]` | latest | required, not optional: the T5/Ankh tokenizers behind ProstT5, prot_t5_xl_half and the Ankh3 pair raise on load without it |
+| sentencepiece | `[plm]` | latest | required, not optional: the T5/Ankh tokenizers behind ProstT5, prott5_xl_half and the Ankh3 pair raise on load without it |
 | mini3di | `[saprot]` | latest | pure-Python 3Di encoder (SaProt structure half); no native deps |
 | esm | `[esmc]` | 3.2.1.post1 | EvolutionaryScale SDK; the ESM C path that bypasses transformers |
 | protobuf | *(optional)* | — | Not pulled in by any extra. Needed only for Ankh3's *fast* tokenizer — without it, Ankh3 falls back to the slow tokenizer (see gotcha in §7). ankh-large/ProstT5/ESM2/SaProt don't need it. |
@@ -65,6 +69,9 @@ regression.
 Per-checkpoint transformers requirements are **not** expressible as one install pin (ESM C 6B
 documents `>=4.57`, prot_bert needs `<5`), so `foldenv.plm` checks each checkpoint's own window at
 load time and the pin stays wide. §5 has the table.
+
+> Stage codes `M1`–`M8` below are defined in [`tests/TESTS.md`](../tests/TESTS.md); decision
+> codes `D1`–`D6` in [`foldenv/decisions.yaml`](../foldenv/decisions.yaml).
 
 ## 3. mkdssp (M2 — DSSP) — the D6 gotcha, per platform
 
@@ -93,7 +100,7 @@ uses only accepts the answer. `_detect_version` is where foldenv produces it.
   the legacy command form), but set `dssp.executable` in `decisions.yaml` to the actual binary
   name (`dssp` vs `mkdssp`).
 - **Source (last resort):** github.com/PDB-REDO/dssp — needs cmake, C++17, libcifpp, boost.
-  Involved; prefer bioconda on the cluster.
+  Involved; prefer bioconda on an HPC cluster.
 - **Config:** `decisions.yaml → dssp.executable` (default `mkdssp`) lets each machine point at
   its binary name. RSA normalization is **machine-independent**: foldenv carries its own
   MaxASA tables (`dssp.MAX_ASA_TABLES`, verified to match Biopython's Wilke=Tien2013 / Sander
@@ -113,9 +120,15 @@ uses only accepts the answer. `_detect_version` is where foldenv produces it.
     would also work, but forcing CPU is the one-liner the env override exists for.
 - `foldenv/__init__.py` sets `PYTORCH_ENABLE_MPS_FALLBACK=1` (Mac-only effect; harmless on
   Linux/CUDA).
-- **ESM C 6B never runs on MPS.** `embedding.EMBEDDING_MODELS["esmc_6b"].mps_ok=False` and
-  `resolve_device` reroutes an MPS pick to CUDA (else CPU) with a warning. Intended targets: a
-  large-RAM CPU host (bf16) or CUDA GPUs. Set `embedding.device` explicitly there.
+- **ESM C 6B has no load path in foldenv, and that is not a version problem.** The HF `esmc`
+  model_type is in no released transformers, and the `esm` SDK registry omits the 6B — so neither
+  of this package's two paths reaches it, and `check_transformers_version` refuses it
+  unconditionally, before a device is chosen. A CUDA host gets the same `ImportError` as a Mac.
+  The 6B *is* runnable, but only by hand-building `esm.models.esmc.ESMC` and loading its
+  safetensors shards directly; done that way it fits a 24 GB GPU in bf16 (~12 GB). foldenv does
+  not do this, and `esmc_6b` is listed only for its dimension. Use `esmc_600m` through the SDK.
+  Note `mps_ok=False` on that entry therefore records nothing about Apple Silicon — nothing has
+  ever reached device selection.
 
 ## 5. Transformers version window and the per-checkpoint constraints
 
@@ -167,7 +180,8 @@ instead of the table.
 - **`esmc_600m` — the `esm` SDK path** (`[esmc]` extra, `ESMC.from_pretrained("esmc_600m")`,
   registry flags `dim=1152`, `mps_ok=True`, `sdk=True`). It bypasses transformers entirely, so
   no version constraint applies and no cache-key version tag is added. It runs on **MPS in
-  bf16 at ~1.4 s/protein** and passes the row-alignment gate (TEM-1 L150A, ratio 27).
+  bf16 at ~1.4 s/protein**. Note the suite's row-alignment tests cover `ankh`, `ankh3_large` and
+  `saprot` only — `esmc_600m` has no such test, so treat its alignment as unverified here.
   `embedding.py` branches on the `sdk` flag: forward is `encode` →
   `logits(return_embeddings=True)`, strip BOS/EOS, cast bf16→f32, CPU return. It needs the
   `esm` SDK but **not** `mini3di` (SaProt-only). This is the path for local ESM C smoke tests.
@@ -175,15 +189,18 @@ instead of the table.
   observed sufficient: on transformers **4.57.6** the load still fails inside transformers with
   *"model type `esmc` … does not recognize this architecture"* (and `trust_remote_code=True`
   does not help), which is why the guard entry is unconditional rather than a floor. The SDK
-  exposes only 300M/600M for local use — 6B is a Forge-API or cluster target. Use `esmc_600m`
-  anywhere else.
+  registry exposes only 300M/600M, so it does not reach the 6B either. Both of this package's
+  load paths are therefore structurally excluded, not version-blocked. The 6B *has* been run —
+  by hand-building `esm.models.esmc.ESMC(d_model=2560, n_heads=40, n_layers=80)` and loading its
+  safetensors shards directly on CUDA in bf16 (~12 GB) — which is a bespoke loader rather than
+  anything foldenv exposes. Use `esmc_600m`.
 
 ## 6. Network & weights (cluster compute nodes are often offline)
 
 - **AlphaFold fetch** hits `alphafold.ebi.ac.uk` over HTTPS. Cluster compute nodes usually have
   **no outbound internet** → pre-fetch on a login node and populate the on-disk cache
   (`.foldenv_cache/alphafold/<ACC>.cif`), which the tool reuses by accession.
-- **HF model weights** (Ankh ~2 GB, SaProt 650M, ESM C 6B large) download on first use. On the
+- **HF model weights** (Ankh ~7.5 GB, SaProt 650M, ESM C 6B large) download on first use. On the
   cluster, **pre-download on the login node** and set `HF_HOME`/`TRANSFORMERS_CACHE` to a shared
   path so compute nodes read from cache. Worth doing on any bandwidth-limited host.
 - API detail: unknown/malformed accessions return **HTTP 400** (not just 404) — both map to

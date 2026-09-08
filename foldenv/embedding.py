@@ -1,17 +1,16 @@
 """Per-residue PLM embedding, multi-model.
 
-Default is **Ankh-large** (1536-d): similar size to ProstT5 and a stronger ΔΔG representation
-than ProstT5 on the SKEMPI S1102 benchmark — but not the strongest available here, and the
-figures behind the choice are unpublished. See `decisions.yaml` D5 for both numbers, the
-training budget they were measured at, and where they come from. Also available: **ProstT5**
-AA-mode (the original spec, 1024-d), **SaProt** (structure-aware AA+3Di, 1280-d — its 3Di half
-is computed from the AlphaFold backbone with mini3di), and **ESM C 6B** (2560-d).
+Default is **Ankh-large** (1536-d), inherited from MuLAN, which foldenv was extracted from work
+with. It is a default rather than a recommendation: this package neither trains nor evaluates a
+downstream model, so it makes no claim about which encoder is best. Also available: **ProstT5** in amino-acid mode (1024-d), **SaProt**
+(structure-aware AA+3Di, 1280-d — its 3Di half is computed from the AlphaFold backbone with
+mini3di), **ESM2**, and **ESM C** (up to 2560-d).
 
 Ankh / ProstT5 / ESM C reuse the shared `foldenv.plm` helpers (loader + `embed_sequence`, which already
 handles each model's prefixes and per-residue slicing). SaProt needs a structure-aware
 input, so it has a dedicated path here.
 
-One forward pass per protein; the caller (M5) slices at `position` and caches per protein.
+One forward pass per protein; the caller slices at `position` and caches per protein.
 
 torch/transformers are an optional extra (`pip install "foldenv[plm]"`), so nothing here may
 import them at module level: `get_structural_context` with `embedding.model = "none"` must keep
@@ -30,8 +29,13 @@ from . import constants as C
 
 # --- model registry --------------------------------------------------------------------
 # name → PLM key in constants.PLM_ENCODERS, output dim, whether it needs 3Di structure,
-# and whether it may run on Apple MPS. ESM C 6B is too large / MPS-kernel-incompatible —
-# it targets a large-RAM CPU host or CUDA GPUs, so `mps_ok=False` routes it off MPS.
+# and whether it may run on Apple MPS. `mps_ok=False` on ESM C 6B is an untested precaution, not
+# a measured incompatibility: its transformers path does not load on any release this package has
+# measured (see plm.check_transformers_version), so it has never reached a device on any host and
+# there is nothing to have observed. Kept off MPS on the reasoning that a 6B-parameter checkpoint
+# is the least likely to behave there, but note bf16 weights are ~12 GB against a working set that
+# is typically tens of GB on Apple Silicon, so memory is unlikely to be the obstacle if the load
+# path is ever fixed. `esmc_600m`, which goes through the `esm` SDK, is the ESM C route that works.
 
 
 @dataclass(frozen=True)
@@ -47,16 +51,17 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
     "ankh": EmbeddingModelSpec("ankh", 1536, False),           # Ankh-large (default)
     "ankh3_large": EmbeddingModelSpec("ankh3_large", 1536, False),  # Ankh3-large ([NLU] prefix)
     "ankh3_xl": EmbeddingModelSpec("ankh3_xl", 2560, False),   # Ankh3-XL ([NLU] prefix)
-    "prostt5_aa": EmbeddingModelSpec("prostt5", 1024, False),  # ProstT5 AA-mode (spec)
+    "prostt5_aa": EmbeddingModelSpec("prostt5", 1024, False),  # bilingual, amino-acid mode
     "saprot": EmbeddingModelSpec("saprot", 1280, True),        # SaProt 650M, AA+3Di
     "saprot_1.3b": EmbeddingModelSpec("saprot_1.3b", 1280, True),  # SaProt 1.3B (deeper, 1280-d)
-    "esm2_3b": EmbeddingModelSpec("esm", 2560, False),         # ESM2-3B (sweep baseline)
+    "esm2_3b": EmbeddingModelSpec("esm", 2560, False),         # ESM2-3B (widely used)
     "esm2_650m": EmbeddingModelSpec("esm_650M", 1280, False),  # ESM2-650M (lighter)
     # ESM Cambrian via the `esm` SDK (transformers-independent). 600M is MPS-friendly (bf16,
-    # ~1.4 s/protein) and locally loadable; the 6B has no working transformers path (see plm.py)
-    # and is a Forge-API / cluster target.
+    # ~1.4 s/protein) and locally loadable. The 6B is registered for its dimension only: neither
+    # load path reaches it (see plm.py), and running it means hand-building the module from the
+    # safetensors shards, which is outside this package.
     "esmc_600m": EmbeddingModelSpec("esmc_600m", 1152, False, mps_ok=True, sdk=True),
-    "esmc_6b": EmbeddingModelSpec("esmc_6b", 2560, False, mps_ok=False),  # ESM C 6B (CPU/GPU only)
+    "esmc_6b": EmbeddingModelSpec("esmc_6b", 2560, False, mps_ok=False),  # no load path; see plm.py
 }
 
 # SaProt structure-aware vocab tokens: each residue is one AA char plus one 3Di char.
@@ -102,7 +107,8 @@ def resolve_device(model_name: str, device: Any = None):
     Explicit `device` (including the string "mps") is honored but warned about for a model
     flagged `mps_ok=False`. With `device=None`/"auto", falls back to the shared
     `get_device()`, then reroutes an MPS pick to CUDA (if present) or CPU for such models —
-    so ESM C 6B lands on CPU or CUDA, never Apple's MPS.
+    so ESM C 6B lands on CPU or CUDA. That flag is a precaution, not a measured result: see the
+    registry comment above for why nothing has ever been observed either way.
     """
     torch = _import_torch()
 
@@ -111,8 +117,8 @@ def resolve_device(model_name: str, device: Any = None):
         dev = torch.device(device)
         if dev.type == "mps" and not spec.mps_ok:
             warnings.warn(
-                f"{model_name} is not supported on MPS; expect failures/OOM. "
-                "Run it on CPU or CUDA instead.",
+                f"{model_name} is flagged as untested on MPS. Run it on CPU or CUDA instead, "
+                "or set the flag if you have measured it working here.",
                 stacklevel=2,
             )
         return dev
@@ -123,8 +129,8 @@ def resolve_device(model_name: str, device: Any = None):
     if dev.type == "mps" and not spec.mps_ok:
         dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         warnings.warn(
-            f"{model_name} cannot use MPS — routing to {dev.type.upper()} "
-            "(this checkpoint targets a large-RAM CPU host or a CUDA GPU).",
+            f"{model_name} is not run on MPS — routing to {dev.type.upper()}. "
+            "This is a precaution rather than a measured failure; see decisions.yaml D5.",
             stacklevel=2,
         )
     return dev

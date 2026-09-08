@@ -44,6 +44,11 @@ def test_invoke_validation_offline():
         tool.invoke({"uniprot_id": "P62593", "position": 0})
     with pytest.raises(ValueError):                       # malformed accession fails fast
         tool.invoke({"uniprot_id": "not an accession!", "position": 1})
+    # `$` matches before a trailing newline, so a `.match`-based check would accept this and let
+    # it reach a network fetch. Matched on the message so the assertion cannot be satisfied by
+    # whatever that fetch would raise instead.
+    with pytest.raises(ValueError, match="not a valid UniProt accession"):
+        tool.invoke({"uniprot_id": "P62593\n", "position": 1})
     with pytest.raises(TypeError):                        # stringy bool must not slip through
         tool.invoke({"uniprot_id": "P62593", "position": 1, "include_embedding": "false"})
 

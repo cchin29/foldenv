@@ -1,4 +1,4 @@
-"""M5 assembler tests. The default embedding (Ankh, ~2 GB) is skipped by using
+"""M5 assembler tests. The default embedding (Ankh, ~7.5 GB) is skipped by using
 `embedding.model: none`; the real embedding path is an opt-in heavy test."""
 import os
 
@@ -55,7 +55,7 @@ def test_assemble_full_dict_tem1():
     assert out["wildtype_aa"] == context.get_dssp("P62593", cfg)[150].aa
     assert out["secondary_structure"] in ("H", "E", "C")
     assert 0.0 <= out["rsa"] <= 1.0
-    assert out["contact_count"] == 13                   # matches M3 smoke check
+    assert out["contact_count"] == 13                   # 8 Å Cα shell at P62593 position 150
     assert len(out["nearest_contacts"]) <= 5
     assert all({"resnum", "aa", "distance"} <= set(c) for c in out["nearest_contacts"])
     assert 0.0 <= out["plddt"] <= 100.0

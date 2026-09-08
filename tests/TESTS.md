@@ -130,6 +130,9 @@ Covers non-default `decisions.yaml` choices end-to-end (the defaults are exercis
 - `test_max_asa_lookup_and_unknown` (pure) — `max_asa("A", tien2013_theoretical)==129.0`; non-standard `X` → `None`.
 - `test_tables_differ_between_references` (pure) — Sander/Rost and Tien tables give different values for the same residue.
 - `test_run_dssp_rejects_unknown_table` (pure) — an unknown table name raises `ValueError`.
+- `test_missing_dssp_binary_says_what_to_install` (pure) — a name that resolves to nothing raises `FileNotFoundError` whose text names the binary, the per-platform install commands, the `dssp.executable` config leaf, and both which entry points stop working and which keep working. DSSP is an external program, so `pip` cannot supply it and the error text is the whole remedy.
+- `test_unlaunchable_dssp_raises_without_warning` (pure, ×6) — parametrised over six ways the binary can fail to launch: absent, present but not executable, a directory, a script whose interpreter is missing, a path leading through a regular file, and a present executable of the wrong architecture. Between them they raise four `OSError` subclasses — `FileNotFoundError` (ENOENT), `PermissionError` (EACCES), `NotADirectoryError` (ENOTDIR) and plain `OSError` (ENOEXEC) — which is why the handler catches `OSError` rather than naming subclasses; all six must reach the same actionable error and emit **no** `RuntimeWarning`. Asserts the absence of any warning rather than its wording, so rewording the "Could not parse" text cannot make it vacuously green.
+- `test_detect_version_alone_also_raises_the_actionable_error` (pure) — `_detect_version` is the single guard; reached directly it raises the same error `run_dssp` surfaces.
 - `test_dssp_on_tem1` (live) — real `mkdssp` on TEM-1: 286 records keyed 1..286, ss3 ∈ {H,E,C}, rsa ∈ [0,1], and the **disulfide-cysteine regression** — DSSP lowercases disulfide-bonded Cys (a/b/c…); `run_dssp` must renormalize them to canonical uppercase `C` (TEM-1 has a Cys–Cys bridge), so all aa are canonical and at least one `C` remains.
 
 ### `test_contacts.py` (pure + live)
@@ -201,6 +204,9 @@ Disk-persistence layer (`persist.py`) round-tripped in isolation — no network,
 PLM weights (DSSP records and a small `torch` tensor are built by hand).
 - `test_dssp_roundtrip` — `save_dssp`→`load_dssp` reconstructs every `ResidueDSSP` field; a non-standard residue's NaN `rsa` is restored as NaN (not None/0).
 - `test_dssp_written_json_is_strict` — the file contains no invalid `NaN` token, parses under a strict JSON parser, and the NaN residue's `rsa` is stored as `null`.
+- `test_legacy_format_embedding_cache_file_is_refused` (pure) — a `.pt` in the old `.tar` container reads as a miss on every torch version. `torch.save` has written the zip container since 1.6, so a legacy file was not written by this package; `weights_only=True` does not restrict the legacy path on torch <=2.5 (CVE-2025-32434).
+- `test_cache_paths_reject_a_traversing_identifier` (pure) — `_dssp_path` and `_emb_path` refuse an identifier that would escape the cache directory. Guarded at the path builders because `context.get_dssp` consults the DSSP cache before it reaches `fetch_structure`.
+- `test_dssp_cache_rejects_out_of_range_and_off_alphabet_values` (pure) — an `rsa` outside [0,1], an `ss3` off the H/E/C alphabet, an unknown `ss8`, or a multi-character `aa` each read as a miss rather than being served to an LLM caller.
 - `test_dssp_table_keys_are_distinct` — different MaxASA tables map to different files; the other table stays a miss (no cross-table collision).
 - `test_embedding_roundtrip` — `save_embedding`→`load_embedding` reproduces a `[286,1536]` tensor exactly.
 - `test_embedding_model_keys_are_distinct` — an embedding saved under one model isn't served for another.
@@ -236,7 +242,12 @@ other, whatever the numbers happen to be.
 - `test_citation_version_matches_package` — `CITATION.cff`'s `version` equals it too.
 - `test_all_three_declarations_agree` — the three read together are one value, so a partial
   bump fails here rather than at upload time.
+- `test_changelog_documents_this_version` — the newest `## [x.y.z]` heading in `CHANGELOG.md` is the version the package reports, so a release cannot ship undocumented.
+- `test_site_stat_to_dict_is_strict_json` (pure) — `SiteStat.to_dict()` survives `allow_nan=False`; a NaN percentile becomes `null`.
+- `test_crosscheck_report_to_dict_is_strict_json` (pure) — the same for `CrosscheckReport`, including the under-two-residues NaN case.
 - `test_citation_release_date_is_iso` — `date-released` is a well-formed ISO date.
+- `test_citation_release_date_matches_its_changelog_entry` — and names the day the changelog says this version shipped. The shape check above passes on the *previous* release's date, which is exactly what a bump that edits three version strings and forgets the fourth leaves behind.
+- `test_citation_is_valid_yaml_with_no_duplicate_keys` — `CITATION.cff` parses, and no mapping defines a key twice. The other tests here read it line-wise, so nothing else in the suite would notice a reference block pasted inside another one.
 - `test_python_classifiers_agree_with_requires_python` — the lowest
   `Programming Language :: Python :: 3.x` classifier is the `requires-python` floor: nothing is
   advertised that the resolver would refuse, and the floor itself is advertised. If a ceiling is
@@ -318,7 +329,7 @@ RUN_HEAVY_EMB=1 .venv/bin/python -m pytest tests -q
 
 - **Live** tests need network (AlphaFold-DB; `test_validation` also RCSB `1BTL`) and the
   **`mkdssp`** binary (macOS: `brew tap brewsci/bio && brew install brewsci/bio/dssp` → v4.6.1). Without them they skip.
-- **Heavy** tests download weights on first use — Ankh ~2 GB (`test_ankh_forward_shape`,
+- **Heavy** tests download weights on first use — Ankh ~7.5 GB (`test_ankh_forward_shape`,
   the alignment/mutation tests, the context/tool end-to-end); Ankh3-large and SaProt-650M are
   additional multi-GB downloads. Weights are HuggingFace-cached, so re-runs reuse them; AF
   structures are disk-cached under the config cache dir.
@@ -328,7 +339,8 @@ RUN_HEAVY_EMB=1 .venv/bin/python -m pytest tests -q
 - **ESM C (`esmc_6b`)** is exercised at the registry/device-routing level (spec flags, the
   off-MPS reroute) and at the version-guard level (its transformers path is refused before any
   download, at every version — no measured release registers the `esmc` `model_type`); there is
-  **no forward pass** — the 6B weights are a cluster/Forge-API target. `esmc_600m` through the
+  **no forward pass** — the 6B has no load path here at all, and running it elsewhere means
+  hand-building the module from its safetensors shards. `esmc_600m` through the
   `esm` SDK is the ESM C path that works locally; `docs/SETUP_NOTES.md` §5 has the
   per-checkpoint windows and the practical ESM C notes.
 - **`esm2_650m` / `esm2_3b` / `prostt5_aa` / `ankh3_xl` / `saprot_1.3b`** are covered by the

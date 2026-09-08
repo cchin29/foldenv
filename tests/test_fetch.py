@@ -9,7 +9,7 @@ from foldenv.fetch import NoAlphaFoldModelError, fetch_structure
 pytest.importorskip("Bio", reason="Biopython not installed")
 requests = pytest.importorskip("requests")
 
-TEM1 = "P62593"  # TEM-1 β-lactamase — the plan's primary test protein
+TEM1 = "P62593"  # TEM-1 β-lactamase — the reference protein used throughout this suite
 
 
 def _online() -> bool:

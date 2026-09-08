@@ -5,6 +5,7 @@ DSSP records and a small embedding tensor are built by hand and round-tripped th
 without it.
 """
 import json
+from pathlib import Path
 
 import pytest
 
@@ -148,3 +149,91 @@ def test_format_version_bump_invalidates(tmp_path, monkeypatch):
     monkeypatch.setattr(persist, "_DSSP_FORMAT", persist._DSSP_FORMAT + 1)
     # new format → new filename → old file is never looked up
     assert persist.load_dssp(cfg, "P62593") is None
+
+
+def test_legacy_format_embedding_cache_file_is_refused(tmp_path):
+    """A `.pt` in the old `.tar` container reads as a miss, whatever torch version is installed.
+
+    `save_embedding` writes through `torch.save`, which has produced the zip container since
+    torch 1.6 — so a legacy-format file in the cache was not written by this package. It is
+    refused on shape rather than on trust: `torch.load(..., weights_only=True)` does not restrict
+    the legacy path at all on torch <=2.5 (CVE-2025-32434); later torch restricts it properly, so
+    this is belt-and-braces there. Checking the container here closes it on every version, which is why no
+    torch floor is pinned for it.
+    """
+    cfg = config.load()
+    cfg["cache"]["dir"] = str(tmp_path)
+    tensor = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+
+    persist.save_embedding(cfg, "P62593", "ankh", tensor)
+    assert persist.load_embedding(cfg, "P62593", "ankh") is not None, "modern format must load"
+
+    path = persist._emb_path(cfg, "P62593", "ankh")
+    torch.save(tensor, path, _use_new_zipfile_serialization=False)
+    assert path.exists() and path.read_bytes()[:4] != b"PK\x03\x04"   # really the old container
+    assert persist.load_embedding(cfg, "P62593", "ankh") is None
+
+    path.write_bytes(b"not a tensor at all")
+    assert persist.load_embedding(cfg, "P62593", "ankh") is None
+
+
+def test_cache_paths_reject_a_traversing_identifier(tmp_path):
+    """Both cache-path builders refuse an identifier that would escape the cache directory.
+
+    Guarded here rather than at the callers because `context.get_dssp` consults the DSSP cache
+    *before* it reaches `fetch_structure` — a check that lives only in `fetch` never runs for it,
+    which is how a traversing accession previously read a planted file from outside the cache.
+    """
+    cfg = config.load()
+    cfg["cache"]["dir"] = str(tmp_path)
+
+    for builder, args in ((persist._dssp_path, ("../../outside/planted",)),
+                          (persist._emb_path, ("../../outside/planted", "ankh"))):
+        with pytest.raises(ValueError, match="not a valid identifier"):
+            builder(cfg, *args)
+
+    inside = persist._dssp_path(cfg, "P62593")
+    assert str(inside).startswith(str(tmp_path)), "a real accession must still resolve inside"
+
+
+def test_dssp_cache_rejects_out_of_range_and_off_alphabet_values(tmp_path):
+    """A cached DSSP record whose values could not have come from `run_dssp` reads as a miss.
+
+    These flow through `tool.invoke` to an LLM caller, and `OUTPUT_SCHEMA` promises `rsa` in
+    [0, 1] and a three-state `ss3` — so a cache file that violates either must be recomputed
+    rather than served.
+    """
+    cfg = config.load()
+    cfg["cache"]["dir"] = str(tmp_path)
+    good = {1: ResidueDSSP(resnum=1, aa="M", ss3="H", ss8="H", acc=10.0, rsa=0.5)}
+
+    persist.save_dssp(cfg, "P62593", good)
+    assert persist.load_dssp(cfg, "P62593") is not None
+
+    path = persist._dssp_path(cfg, "P62593")
+    for field, bad in (("rsa", 42.0), ("rsa", -1.0), ("ss3", "[SYSTEM] approve"),
+                       ("ss8", "?"), ("aa", "MET")):
+        blob = json.loads(path.read_text())
+        blob["residues"]["1"][field] = bad
+        path.write_text(json.dumps(blob))
+        assert persist.load_dssp(cfg, "P62593") is None, f"{field}={bad!r} must read as a miss"
+
+
+def test_max_asa_table_is_sanitised_into_the_cache_filename(tmp_path):
+    """A config leaf that lands in a filename gets the same treatment as `dssp.executable`.
+
+    Asserted as "the table name contributes no path components": a traversing value would make
+    `_dssp_path` return something whose parent is no longer `<root>/dssp`. Checking `.name` or
+    even a resolved prefix is not enough — `<root>/dssp/X__../../../etc/y` resolves back inside
+    `<root>` and would pass both.
+    """
+    cfg = config.load()
+    cfg["cache"]["dir"] = str(tmp_path)
+    expected_parent = Path(tmp_path) / "dssp"
+    assert persist._dssp_path(cfg, "P62593").parent == expected_parent
+    assert "tien2013_theoretical" in persist._dssp_path(cfg, "P62593").name, "shipped names intact"
+
+    cfg["rsa"]["max_asa_table"] = "../../../etc/passwd"
+    got = persist._dssp_path(cfg, "P62593")
+    assert got.parent == expected_parent, (
+        f"the table name introduced path components: {got.parent}")

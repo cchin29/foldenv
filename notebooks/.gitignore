@@ -1,0 +1,9 @@
+# foldenv's on-disk cache: AlphaFold mmCIFs, RCSB structures, DSSP results, PLM embeddings.
+# Populated by running the notebooks; regenerable from the network. These notebooks ship no data.
+.foldenv_cache/
+
+.ipynb_checkpoints/
+
+# SKEMPI 2.0 + its cleaned PDB set, fetched at runtime by skempi_interface_validation.ipynb
+# (~150 MB). CC BY 4.0 data from BSC; downloaded, never redistributed here.
+skempi_data/

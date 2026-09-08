@@ -175,7 +175,7 @@ def test_ankh3_length_alignment_regression():
     seq = context.get_sequence("P62593", config.load())
     model, tok = E.load_embedder("ankh3_large", "cpu")
     e_wt = E.embed_protein("ankh3_large", seq, model=model, tokenizer=tok)
-    assert e_wt.shape == (len(seq), 1536)          # correct length (was L-1 before the fix)
+    assert e_wt.shape == (len(seq), 1536)          # one row per residue, no special tokens
     p = 150
     mut = seq[: p - 1] + "A" + seq[p:]
     e_mut = E.embed_protein("ankh3_large", mut, model=model, tokenizer=tok)

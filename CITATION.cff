@@ -16,8 +16,8 @@ authors:
     given-names: Connor
     email: cchin29@stanford.edu
     affiliation: Stanford University
-version: "0.2.0"
-date-released: "2026-08-25"
+version: "0.3.0"
+date-released: "2026-09-08"
 license: CC-BY-NC-SA-4.0
 license-url: "https://creativecommons.org/licenses/by-nc-sa/4.0/"
 url: "https://github.com/cchin29/foldenv"
@@ -29,7 +29,7 @@ repository-code: "https://github.com/cchin29/foldenv"
 # release commit; a metadata version and a module constant that disagree cannot both be right.
 #
 # No `identifiers:` block yet -- there is no DOI for the software itself. If one is minted from
-# the v0.2.0 tag, add it here in the same pass.
+# the v0.3.0 tag, add it here in the same pass.
 #
 # `issue`, not `number`, for a periodical issue: CFF 1.2 defines `number` as the accession
 # number of a work, which is not what a journal issue is. Long author lists are truncated to
@@ -69,6 +69,25 @@ references:
     notes: >-
       Upstream work that two helper modules here adapt from, and whose licence this package
       inherits. Code: https://github.com/GianLMB/mulan
+  # Method A, the DSSP 8-state to 3-state reduction adapted in foldenv.dssp. It sits after the
+  # MuLAN entry because that is where the reduction reached this package, not under its licence.
+  - type: article
+    authors:
+      - family-names: "Cuff"
+        given-names: "James A."
+      - family-names: "Barton"
+        given-names: "Geoffrey J."
+    title: "Evaluation and improvement of multiple sequence methods for protein secondary
+      structure prediction"
+    # Renamed "...and Bioinformatics" in 2005; in 1999 it was "...and Genetics".
+    journal: "Proteins: Structure, Function, and Genetics"
+    volume: 34
+    issue: 4
+    start: 508
+    end: 519
+    year: 1999
+    doi: "10.1002/(SICI)1097-0134(19990301)34:4<508::AID-PROT10>3.0.CO;2-4"
+    notes: "Method A -- the DSSP 8-state to 3-state reduction used in foldenv.dssp."
 
   # The primary input. AlphaFold DB asks for the method paper and the database paper separately.
   - type: article
@@ -293,6 +312,36 @@ references:
       Source of the 3Di alphabet that mini3di implements. First three authors plus the senior
       author; see the paper for the full list.
 
+  # Not a dependency of the package, but the whole evidential basis of the shipped
+  # notebooks/skempi_interface_validation.ipynb, which is distributed in the sdist.
+  - type: article
+    title: >-
+      SKEMPI 2.0: an updated benchmark of changes in protein-protein binding energy,
+      kinetics and thermodynamics upon mutation
+    authors:
+      - family-names: "Jankauskaite"
+        given-names: "Justina"
+      - family-names: "Jimenez-Garcia"
+        given-names: "Brian"
+      - family-names: "Dapkunas"
+        given-names: "Justas"
+      - family-names: "Fernandez-Recio"
+        given-names: "Juan"
+      - family-names: "Moal"
+        given-names: "Iain H."
+    year: 2019
+    journal: Bioinformatics
+    volume: 35
+    issue: 3
+    start: 462
+    end: 469
+    doi: 10.1093/bioinformatics/bty635
+    url: "https://life.bsc.es/pid/skempi2"
+    notes: >-
+      CC BY 4.0. Interface labels and mutation records used by the shipped SKEMPI validation
+      notebook, which downloads the dataset rather than vendoring it; no dataset file is
+      redistributed here.
+
   # The default embedding backbone. `get_structural_context` computes an embedding unless asked
   # not to, and `embedding`/`embedding_model` are required keys in the output schema -- so Ankh
   # is what a caller who makes no choice gets, which makes it a component rather than an option.
@@ -314,8 +363,8 @@ references:
       Ankh-large, the default `embedding_model`. The published title carries an ankh glyph
       after "Ankh", omitted here for tooling safety. First three authors plus the senior author.
 
-# The nine other selectable backbones -- Ankh3-large/xl, ProstT5, SaProt 650M/1.3B, ESM2-3B/650M,
-# ESM C 600M/6B -- are not cited here. Only the default is a component; the rest are chosen by
+# The eight other selectable backbones -- Ankh3-large/xl, ProstT5, SaProt 650M/1.3B, ESM2-3B/650M,
+# ESM C 600M -- are not cited here. Only the default is a component; the rest are chosen by
 # the caller, they collapse to a handful of model families, and listing them would bury the
 # sources above. `EMBEDDING_MODELS` in foldenv/embedding.py names each one, and
 # `PLM_ENCODERS` in foldenv/constants.py maps it to its HuggingFace Hub id, which is where the

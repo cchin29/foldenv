@@ -7,14 +7,17 @@ than hardcoding the `-F1-model_v4.cif` URL) so we track the current file version
 Edge cases handled / flagged:
   * 404 (no model for that accession) → `NoAlphaFoldModelError`.
   * Multi-fragment proteins (>2,700 aa split into F1/F2/…): the API returns one entry per
-    fragment. v1 uses fragment **F1** and records the rest in `StructureRecord.fragments`;
-    per-fragment residue-number stitching for very long proteins is left as a documented
-    TODO: AF numbering edge cases.
+    fragment. foldenv uses fragment **F1** and records the rest in `StructureRecord.fragments`;
+    per-fragment residue-number stitching is not implemented, so positions beyond F1 are
+    unavailable rather than silently misnumbered.
   * Isoforms renumber vs the canonical sequence — the caller must pass a canonical accession.
 """
 from __future__ import annotations
 
 import json
+import os
+import re
+import tempfile
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,16 +91,63 @@ def _select_model_entry(entries: list[dict], accession: str):
     return own[0], own
 
 
+#: Ceiling on a single downloaded structure. The largest AlphaFold mmCIF fragments are a few MB;
+#: this is loose enough never to fire on real data and tight enough that a hostile or misconfigured
+#: endpoint cannot fill the disk.
+_MAX_DOWNLOAD_BYTES = 256 << 20  # 256 MiB
+
+
+#: A structure identifier is interpolated into a cache path and into a URL, so it is checked
+#: here -- at the point the path is built -- rather than at any one caller. `tool.invoke` also
+#: validates, but `tool.call`, `get_structural_context`, `get_dssp`, `get_sequence`,
+#: `structural_profile` and `fetch_structure` are all public and reach this code directly; a guard
+#: that lives only in `invoke` protects whichever entry point the integrator did not choose.
+#: Deliberately narrow: alphanumerics, with an optional `-N` isoform suffix. That admits every
+#: UniProt accession and every PDB id while excluding the separators (`/`, `\`, `.`) that make a
+#: traversal, and the NUL and newline that make a surprising filename.
+_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9]{1,12}(-[0-9]{1,3})?\Z")
+
+
+def _check_identifier(value: str, kind: str) -> str:
+    """Return `value` if it is a usable structure identifier, else raise `ValueError`."""
+    if not isinstance(value, str) or not _IDENTIFIER_RE.match(value):
+        # `repr` first, then truncate: interpolating `value[:60]` directly raises TypeError on a
+        # non-subscriptable value, which is the one thing this function promises not to do.
+        raise ValueError(
+            f"{kind} {repr(value)[:60]} is not a valid identifier: expected alphanumerics "
+            f"(with an optional -N isoform suffix), which is what can safely become a cache "
+            f"filename and a URL path segment."
+        )
+    return value
+
+
 def _download(url: str, dest: Path) -> None:
-    """Download `url` to `dest` atomically (write to a temp sibling, then rename)."""
+    """Download `url` to `dest` atomically (write to a unique temp sibling, then replace).
+
+    The temp file comes from `mkstemp` rather than a fixed `<dest>.part`, for the reason
+    `persist._write_atomic` gives: a predictable name in a predictable cache directory is both a
+    collision between two processes fetching the same accession and a symlink a local attacker can
+    plant ahead of time, which `open(..., "wb")` would then follow and overwrite.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    with requests.get(url, timeout=_TIMEOUT, stream=True) as resp:
-        resp.raise_for_status()
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=1 << 16):
-                fh.write(chunk)
-    tmp.rename(dest)
+    fd, tmp_name = tempfile.mkstemp(dir=dest.parent, suffix=".part")
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        with requests.get(url, timeout=_TIMEOUT, stream=True) as resp:
+            resp.raise_for_status()
+            written = 0
+            with open(tmp, "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=1 << 16):
+                    written += len(chunk)
+                    if written > _MAX_DOWNLOAD_BYTES:
+                        raise ValueError(
+                            f"{url} exceeded {_MAX_DOWNLOAD_BYTES} bytes; refusing to continue"
+                        )
+                    fh.write(chunk)
+        tmp.replace(dest)
+    finally:
+        tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
 def parse_structure(cif_path: Path, accession: str):
@@ -129,6 +179,7 @@ def fetch_structure(
     Raises:
         NoAlphaFoldModelError: no prediction for the accession.
     """
+    accession = _check_identifier(accession, "accession")
     cache_dir = Path(cache_dir)
     cif_path = cache_dir / "alphafold" / f"{accession}.cif"
     # Provenance sidecar: version + fragment list are only known at download time, but
@@ -150,6 +201,14 @@ def fetch_structure(
             raise NoAlphaFoldModelError(
                 f"AlphaFold entry for {accession!r} has no cifUrl: {entry!r}"
             )
+        # `cif_url` comes from the API response and is fetched without a host allowlist. That is
+        # a deliberate call, not an oversight: AlphaFold-DB serves mmCIFs from a different host
+        # than the prediction API, so an allowlist narrow enough to be worth having would break
+        # real downloads whenever EBI moves the file host, while the attack it prevents needs the
+        # API itself (or `FOLDENV_ALPHAFOLD_API_BASE`) to be hostile. Bounded rather than
+        # blocked: `_download` caps the body at `_MAX_DOWNLOAD_BYTES` and writes only to a path
+        # built locally from the validated accession, so a redirected fetch can waste bandwidth
+        # but cannot choose where the bytes land or how many arrive.
         _download(cif_url, cif_path)
         try:
             with open(meta_path, "w") as f:
@@ -170,7 +229,8 @@ def fetch_structure(
     if len(fragments) > 1:  # true length-fragments (isoforms already filtered out)
         warnings.warn(
             f"{accession} is split into {len(fragments)} AlphaFold length-fragments "
-            "(F1/F2/…); v1 uses F1 only — long-protein residue stitching is a known TODO.",
+            "(F1/F2/…); foldenv uses F1 only — residue-number stitching across fragments is "
+            "not implemented, so positions beyond F1 are unavailable.",
             stacklevel=2,
         )
 
@@ -191,7 +251,7 @@ def fetch_experimental_structure(pdb_id: str, cache_dir: str | Path):
     Biopython Structure). Note experimental "author" residue numbering usually differs from
     UniProt numbering — the cross-check reconciles it by sequence alignment, not by assuming.
     """
-    pdb_id = pdb_id.upper()
+    pdb_id = _check_identifier(pdb_id, "pdb_id").upper()
     cif_path = Path(cache_dir) / "pdb" / f"{pdb_id}.cif"
     if not cif_path.exists():
         _download(f"https://files.rcsb.org/download/{pdb_id}.cif", cif_path)

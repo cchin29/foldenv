@@ -11,6 +11,7 @@ Pearson/MAE over the residues present in both.
 """
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from dataclasses import dataclass
 
@@ -31,6 +32,29 @@ class CrosscheckReport:
     ss3_agreement: float     # fraction of compared residues with matching H/E/C
     rsa_pearson: float       # Pearson r of RSA (AF vs experimental)
     rsa_mae: float           # mean |ΔRSA|
+
+    def to_dict(self) -> dict:
+        """This report as a strict-JSON-safe dict.
+
+        `rsa_pearson` and `rsa_mae` are NaN when fewer than two residues could be compared, which
+        `json.dumps` would write as a bare `NaN`; they come back as `None` instead.
+        """
+        return {f.name: _json_safe(getattr(self, f.name)) for f in dataclasses.fields(self)}
+
+
+def _json_safe(value):
+    """A dataclass field as strict JSON: non-finite floats become `None`.
+
+    `json.dumps` writes a bare `NaN` token by default, which is not valid JSON and which many
+    parsers reject; `allow_nan=False` turns the same value into an exception instead. Neither is
+    a useful thing to hand a caller, so "undefined" is represented the way the rest of this
+    package represents it -- as `null`.
+    """
+    if isinstance(value, float) and value != value:      # NaN
+        return None
+    if isinstance(value, float) and value in (float("inf"), float("-inf")):
+        return None
+    return value
 
 
 def _chain_seq_and_resnums(structure, chain_id: str | None):

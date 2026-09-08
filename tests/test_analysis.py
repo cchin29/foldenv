@@ -87,3 +87,36 @@ def test_summarize_fields():
     s = analysis.summarize("P62593")
     assert s["n_sites"] == 3 and s["all_buried"] is True
     assert 0.0 <= s["mean_contact_percentile"] <= 1.0
+
+
+def test_site_stat_to_dict_is_strict_json():
+    """`SiteStat.to_dict` survives `allow_nan=False`; a NaN percentile becomes `null`.
+
+    `_percentile` returns NaN when there is nothing to rank against, so the non-finite path is
+    reachable rather than hypothetical.
+    """
+    import json
+
+    s = analysis.SiteStat(position=68, aa="S", rsa=0.052, rsa_percentile=float("nan"),
+                          contact_count=11, contact_percentile=0.3, buried=True)
+    out = json.loads(json.dumps(s.to_dict(), allow_nan=False))
+    assert out["rsa_percentile"] is None and out["position"] == 68 and out["buried"] is True
+
+
+def test_summarize_top_level_floats_are_strict_json(monkeypatch):
+    """`summarize`'s own values are JSON-safe, not just the `SiteStat`s inside it.
+
+    The README documents converting the sites with `.to_dict()`; that alone is not enough,
+    because `mean_rsa` is NaN when no site has an RSA. Driven through `summarize` itself rather
+    than through `_json_safe`, so removing the wrapper fails this test.
+    """
+    import json
+
+    gapped = [analysis.SiteStat(position=1, aa="X", rsa=None, rsa_percentile=None,
+                                contact_count=0, contact_percentile=0.0, buried=False)]
+    monkeypatch.setattr(analysis, "functional_site_stats", lambda *a, **k: gapped)
+
+    out = analysis.summarize("P62593")
+    out["sites"] = [s.to_dict() for s in out["sites"]]
+    assert out["mean_rsa"] is None, "an undefined mean must serialise as null, not NaN"
+    json.dumps(out, allow_nan=False)
